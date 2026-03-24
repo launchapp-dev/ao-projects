@@ -193,19 +193,30 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn parse_opt<T: std::str::FromStr>(val: Option<String>, name: &str) -> Result<Option<T>>
+where T::Err: std::fmt::Display {
+    val.map(|s| s.parse::<T>().map_err(|e| anyhow::anyhow!("invalid {}: {}", name, e)))
+        .transpose()
+}
+
 async fn handle_task(cmd: TaskCommand, hub: &ProjectHub, json: bool) -> Result<()> {
+    use ao_projects_protocol::*;
     match cmd {
-        TaskCommand::List { status: _, priority: _, search, limit: _ } => {
-            let filter = search.map(|s| ao_projects_protocol::TaskFilter {
-                search_text: Some(s),
+        TaskCommand::List { status, priority, search, limit } => {
+            let filter = TaskFilter {
+                status: parse_opt(status, "status")?,
+                priority: parse_opt(priority, "priority")?,
+                search_text: search,
                 ..Default::default()
-            });
-            let tasks = hub.tasks().list(filter).await?;
+            };
+            let has_filter = filter.status.is_some() || filter.priority.is_some() || filter.search_text.is_some();
+            let tasks = hub.tasks().list(if has_filter { Some(filter) } else { None }).await?;
+            let tasks: Vec<_> = tasks.into_iter().take(limit).collect();
             if json {
                 println!("{}", serde_json::to_string_pretty(&tasks)?);
             } else {
                 for t in &tasks {
-                    println!("{} [{}] {:?} — {}", t.id, format!("{:?}", t.status).to_lowercase(), t.priority, t.title);
+                    println!("{} [{}] {} — {}", t.id, t.status, t.priority, t.title);
                 }
                 println!("\n{} tasks", tasks.len());
             }
@@ -214,32 +225,36 @@ async fn handle_task(cmd: TaskCommand, hub: &ProjectHub, json: bool) -> Result<(
             let task = hub.tasks().get(&id).await?;
             println!("{}", serde_json::to_string_pretty(&task)?);
         }
-        TaskCommand::Create { title, description, task_type: _, priority: _, tag } => {
-            let input = ao_projects_protocol::TaskCreateInput {
+        TaskCommand::Create { title, description, task_type, priority, tag } => {
+            let input = TaskCreateInput {
                 title,
                 description,
+                task_type: parse_opt(task_type, "task_type")?,
+                priority: parse_opt(priority, "priority")?,
                 tags: tag,
                 ..Default::default()
             };
-            let task = hub.tasks().create(input).await?;
+            let task = hub.create_task_linked(input).await?;
             println!("Created {}: {}", task.id, task.title);
         }
         TaskCommand::Stats => {
             let stats = hub.tasks().statistics().await?;
             println!("{}", serde_json::to_string_pretty(&stats)?);
         }
-        TaskCommand::Status { id, status: _ } => {
-            let task = hub.tasks().set_status(&id, ao_projects_protocol::TaskStatus::Ready).await?;
-            println!("Updated {}: {:?}", task.id, task.status);
+        TaskCommand::Status { id, status } => {
+            let s: TaskStatus = status.parse().map_err(|e: String| anyhow::anyhow!(e))?;
+            let task = hub.tasks().set_status(&id, s).await?;
+            println!("Updated {}: {}", task.id, task.status);
         }
         TaskCommand::Delete { id } => {
             hub.tasks().delete(&id).await?;
             println!("Deleted {}", id);
         }
-        TaskCommand::Update { id, title, description, priority: _ } => {
-            let input = ao_projects_protocol::TaskUpdateInput {
+        TaskCommand::Update { id, title, description, priority } => {
+            let input = TaskUpdateInput {
                 title,
                 description,
+                priority: parse_opt(priority, "priority")?,
                 ..Default::default()
             };
             let task = hub.tasks().update(&id, input).await?;
@@ -258,18 +273,25 @@ async fn handle_task(cmd: TaskCommand, hub: &ProjectHub, json: bool) -> Result<(
 }
 
 async fn handle_requirements(cmd: RequirementsCommand, hub: &ProjectHub, json: bool) -> Result<()> {
+    use ao_projects_protocol::*;
     match cmd {
-        RequirementsCommand::List { status: _, priority: _, category: _, search, limit: _ } => {
-            let filter = search.map(|s| ao_projects_protocol::RequirementFilter {
-                search_text: Some(s),
+        RequirementsCommand::List { status, priority, category, search, limit } => {
+            let filter = RequirementFilter {
+                status: parse_opt(status, "status")?,
+                priority: parse_opt(priority, "priority")?,
+                category,
+                search_text: search,
                 ..Default::default()
-            });
-            let reqs = hub.requirements().list(filter).await?;
+            };
+            let has_filter = filter.status.is_some() || filter.priority.is_some()
+                || filter.category.is_some() || filter.search_text.is_some();
+            let reqs = hub.requirements().list(if has_filter { Some(filter) } else { None }).await?;
+            let reqs: Vec<_> = reqs.into_iter().take(limit).collect();
             if json {
                 println!("{}", serde_json::to_string_pretty(&reqs)?);
             } else {
                 for r in &reqs {
-                    println!("{} [{}] {:?} — {}", r.id, format!("{:?}", r.status).to_lowercase(), r.priority, r.title);
+                    println!("{} [{}] {} — {}", r.id, r.status, r.priority, r.title);
                 }
                 println!("\n{} requirements", reqs.len());
             }
@@ -278,10 +300,11 @@ async fn handle_requirements(cmd: RequirementsCommand, hub: &ProjectHub, json: b
             let req = hub.requirements().get(&id).await?;
             println!("{}", serde_json::to_string_pretty(&req)?);
         }
-        RequirementsCommand::Create { title, description, priority: _, category, acceptance_criterion } => {
-            let input = ao_projects_protocol::RequirementCreateInput {
+        RequirementsCommand::Create { title, description, priority, category, acceptance_criterion } => {
+            let input = RequirementCreateInput {
                 title,
                 description,
+                priority: parse_opt(priority, "priority")?,
                 category,
                 acceptance_criteria: acceptance_criterion,
                 ..Default::default()
@@ -289,10 +312,13 @@ async fn handle_requirements(cmd: RequirementsCommand, hub: &ProjectHub, json: b
             let req = hub.requirements().create(input).await?;
             println!("Created {}: {}", req.id, req.title);
         }
-        RequirementsCommand::Update { id, title, description, priority: _, status: _, category: _ } => {
-            let input = ao_projects_protocol::RequirementUpdateInput {
+        RequirementsCommand::Update { id, title, description, priority, status, category } => {
+            let input = RequirementUpdateInput {
                 title,
                 description,
+                priority: parse_opt(priority, "priority")?,
+                status: parse_opt(status, "status")?,
+                category,
                 ..Default::default()
             };
             let req = hub.requirements().update(&id, input).await?;
@@ -304,7 +330,7 @@ async fn handle_requirements(cmd: RequirementsCommand, hub: &ProjectHub, json: b
         }
         RequirementsCommand::Refine { id } => {
             let req = hub.requirements().refine(&id).await?;
-            println!("Refined {}: {:?}", req.id, req.status);
+            println!("Refined {}: {}", req.id, req.status);
         }
     }
     Ok(())

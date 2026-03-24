@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::common::*;
+use crate::common::impl_from_str_via_serde;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -39,6 +40,9 @@ pub enum TaskType {
     Chore,
     Experiment,
 }
+
+impl_from_str_via_serde!(TaskStatus);
+impl_from_str_via_serde!(TaskType);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

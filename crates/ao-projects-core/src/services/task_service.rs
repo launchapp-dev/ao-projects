@@ -140,6 +140,35 @@ impl TaskService {
         Ok(task)
     }
 
+    pub async fn add_dependency(&self, id: &str, dep_id: &str, dep_type: DependencyType) -> Result<Task> {
+        let mut state = self.state.write().await;
+        let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
+        if task.dependencies.iter().any(|d| d.task_id == dep_id) {
+            anyhow::bail!("dependency already exists: {} -> {}", id, dep_id);
+        }
+        task.dependencies.push(TaskDependency { task_id: dep_id.to_string(), dependency_type: dep_type });
+        task.metadata.updated_at = Some(Utc::now());
+        task.metadata.version += 1;
+        let task = task.clone();
+        state.dirty_tasks.insert(id.to_string());
+        Ok(task)
+    }
+
+    pub async fn remove_dependency(&self, id: &str, dep_id: &str) -> Result<Task> {
+        let mut state = self.state.write().await;
+        let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
+        let before = task.dependencies.len();
+        task.dependencies.retain(|d| d.task_id != dep_id);
+        if task.dependencies.len() == before {
+            anyhow::bail!("dependency not found: {} -> {}", id, dep_id);
+        }
+        task.metadata.updated_at = Some(Utc::now());
+        task.metadata.version += 1;
+        let task = task.clone();
+        state.dirty_tasks.insert(id.to_string());
+        Ok(task)
+    }
+
     pub async fn statistics(&self) -> Result<TaskStatistics> {
         let state = self.state.read().await;
         let mut by_status = std::collections::HashMap::new();

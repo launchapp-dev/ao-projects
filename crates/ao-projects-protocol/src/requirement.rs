@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::common::impl_from_str_via_serde;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RequirementStatus {
@@ -44,6 +46,10 @@ pub enum RequirementType {
     #[default]
     Other,
 }
+
+impl_from_str_via_serde!(RequirementStatus);
+impl_from_str_via_serde!(RequirementPriority);
+impl_from_str_via_serde!(RequirementType);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RequirementComment {

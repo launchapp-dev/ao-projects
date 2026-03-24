@@ -49,6 +49,25 @@ impl ProjectHub {
         &self.requirement_service
     }
 
+    pub async fn create_task_linked(&self, input: ao_projects_protocol::TaskCreateInput) -> Result<ao_projects_protocol::Task> {
+        let linked_reqs = input.linked_requirements.clone();
+        let task = self.task_service.create(input).await?;
+
+        if !linked_reqs.is_empty() {
+            let mut state = self.state.write().await;
+            for req_id in &linked_reqs {
+                if let Some(req) = state.requirements.get_mut(req_id) {
+                    if !req.linked_task_ids.contains(&task.id) {
+                        req.linked_task_ids.push(task.id.clone());
+                        req.updated_at = Some(chrono::Utc::now());
+                        state.dirty_requirements.insert(req_id.clone());
+                    }
+                }
+            }
+        }
+        Ok(task)
+    }
+
     pub async fn persist(&self) -> Result<()> {
         let state = self.state.read().await;
         write_json_atomic(&self.state_path, &*state)?;

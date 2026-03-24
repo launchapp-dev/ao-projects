@@ -1,5 +1,27 @@
 use serde::{Deserialize, Serialize};
 
+macro_rules! impl_from_str_via_serde {
+    ($ty:ty) => {
+        impl std::str::FromStr for $ty {
+            type Err = String;
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                let normalized = s.trim().to_lowercase().replace('-', "_");
+                let quoted = format!("\"{}\"", normalized);
+                serde_json::from_str(&quoted)
+                    .map_err(|_| format!("invalid value: '{}' for {}", s, stringify!($ty)))
+            }
+        }
+        impl std::fmt::Display for $ty {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let s = serde_json::to_string(self).unwrap_or_default();
+                write!(f, "{}", s.trim_matches('"'))
+            }
+        }
+    };
+}
+
+pub(crate) use impl_from_str_via_serde;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Priority {
@@ -75,6 +97,12 @@ pub enum ImpactArea {
     Tests,
     CiCd,
 }
+
+impl_from_str_via_serde!(Priority);
+impl_from_str_via_serde!(Complexity);
+impl_from_str_via_serde!(Scope);
+impl_from_str_via_serde!(RiskLevel);
+impl_from_str_via_serde!(ImpactArea);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChecklistItem {

@@ -8,5 +8,6 @@ description = "Wire protocol types for ao-projects: tasks, requirements, priorit
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+
 chrono = { workspace = true }
 uuid = { workspace = true }
