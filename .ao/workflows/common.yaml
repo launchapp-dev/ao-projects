@@ -1,0 +1,159 @@
+tools_allowlist:
+- cargo
+- git
+- gh
+- bash
+mcp_servers:
+  context7:
+    command: npx
+    args:
+    - -y
+    - '@upstash/context7-mcp'
+agents:
+  default:
+    model: kimi-for-coding
+    tool: claude
+    mcp_servers:
+    - ao
+    - context7
+  triager:
+    system_prompt: "You are the ao-projects task triager. Validate tasks and dispatch.\n\
+      \nSTEP 1 \u2014 VALIDATE:\n- Read the task via ao.task.get\n- Check if code already\
+      \ exists\n- Check for existing/merged PRs\n- Check for duplicates\n\nSTEP 2 \u2014\
+      \ DECIDE:\n- SKIP (already done): set \"done\", emit skip verdict\n- SKIP (duplicate):\
+      \ set \"cancelled\", emit skip verdict\n- IMPLEMENT: dispatch to standard workflow\n\
+      \nSTEP 3 \u2014 DISPATCH:\nCall ao.queue.enqueue with task_id and workflow_ref=\"\
+      standard\".\n\nRULES:\n- Check ao.queue.list before dispatching.\n- Search actual\
+      \ code, not just titles.\n"
+    model: claude-haiku-4-5
+    tool: claude
+    mcp_servers:
+    - ao
+  work-planner:
+    system_prompt: "You are the ao-projects work dispatcher. Feed ready tasks into\
+      \ the triage pipeline.\n\nOn each run:\n1. Check queue depth. If >= 10, STOP.\n\
+      2. Get prioritized ready tasks.\n3. Enqueue with workflow_ref=\"triage\".\n4.\
+      \ Max 3 per run.\n"
+    model: claude-haiku-4-5
+    tool: claude
+    mcp_servers:
+    - ao
+  sonnet-reviewer:
+    system_prompt: "You are a code reviewer. Verify that the implementation meets ALL\
+      \ acceptance criteria from the task.\n\n1. Read task via ao.task.get.\n2. Review\
+      \ code against each criterion.\n3. ADVANCE only if all criteria satisfied.\n4.\
+      \ REWORK with specific feedback if not.\n"
+    model: claude-sonnet-4-6
+    tool: claude
+    mcp_servers:
+    - ao
+phases:
+  triage:
+    mode: agent
+    agent: triager
+    directive: Validate the task and dispatch to implementation.
+    capabilities:
+      mutates_state: true
+  implementation:
+    mode: agent
+    agent: default
+    directive: Implement production-quality code for this task.
+    output_contract:
+      kind: implementation_result
+      required_fields:
+      - commit_message
+  code-review:
+    mode: agent
+    agent: sonnet-reviewer
+    directive: Review implementation against task requirements. Only advance if all
+      acceptance criteria are met.
+  work-planning:
+    mode: agent
+    agent: work-planner
+    directive: Scan task backlog, enqueue ready work.
+    capabilities:
+      mutates_state: true
+  check-commits:
+    mode: command
+    directive: Verify implementation branch has commits
+    command:
+      program: bash
+      args:
+      - -c
+      - 'BASE=$(git merge-base HEAD origin/main 2>/dev/null || echo HEAD~1); COUNT=$(git
+        rev-list --count "$BASE..HEAD" 2>/dev/null || echo 0); echo "Commits: $COUNT";
+        [ "$COUNT" -gt 0 ]'
+      cwd_mode: task_root
+      timeout_secs: 30
+      success_exit_codes:
+      - 0
+  push-branch:
+    mode: command
+    directive: Push branch to origin
+    command:
+      program: git
+      args:
+      - push
+      - -u
+      - origin
+      - HEAD
+      cwd_mode: task_root
+      timeout_secs: 60
+      success_exit_codes:
+      - 0
+  create-pr:
+    mode: command
+    directive: Create GitHub PR
+    command:
+      program: gh
+      args:
+      - pr
+      - create
+      - --fill
+      - --base
+      - main
+      cwd_mode: task_root
+      timeout_secs: 60
+      success_exit_codes:
+      - 0
+  cleanup:
+    mode: command
+    directive: Clean build artifacts
+    command:
+      cwd_mode: task_root
+      program: cargo
+      args:
+      - clean
+      timeout_secs: 60
+workflows:
+- id: triage
+  name: Triage & Dispatch
+  description: Validate task, dispatch to implementation
+  phases:
+  - triage
+- id: standard
+  name: Standard
+  description: "Implement \u2192 Push \u2192 PR"
+  phases:
+  - implementation
+  - check-commits
+  - push-branch
+  - create-pr
+  - cleanup
+  post_success:
+    merge:
+      strategy: squash
+      target_branch: main
+      create_pr: true
+      auto_merge: true
+      cleanup_worktree: true
+- id: work-planner
+  name: Work Planner
+  description: Feed ready tasks into triage
+  phases:
+  - work-planning
+schedules:
+- id: work-planner
+  cron: '*/10 * * * *'
+  workflow_ref: work-planner
+  enabled: true

@@ -5,4 +5,7 @@ Cargo.lock
 *.swp
 *.swo
 .env
-.ao/
+.ao/state/
+.ao/monitor-log.txt
+.ao/tasks.db
+.ao/daemon.log
