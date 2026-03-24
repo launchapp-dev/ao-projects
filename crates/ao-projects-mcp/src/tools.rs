@@ -186,7 +186,7 @@ impl ProjectsMcpServer {
         let input = params.0;
         let create = TaskCreateInput {
             title: input.title,
-            description: input.description,
+            description: input.description.unwrap_or_default(),
             tags: input.tags,
             linked_requirements: input.linked_requirements,
             ..Default::default()

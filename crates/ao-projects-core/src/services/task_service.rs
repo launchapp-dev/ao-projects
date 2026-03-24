@@ -15,9 +15,9 @@ impl TaskService {
         Self { state }
     }
 
-    pub async fn list(&self, filter: Option<TaskFilter>) -> Result<Vec<Task>> {
+    pub async fn list(&self, filter: Option<TaskFilter>) -> Result<Vec<OrchestratorTask>> {
         let state = self.state.read().await;
-        let mut tasks: Vec<Task> = state.tasks.values().cloned().collect();
+        let mut tasks: Vec<OrchestratorTask> = state.tasks.values().cloned().collect();
         if let Some(f) = filter {
             tasks.retain(|t| task_matches_filter(t, &f));
         }
@@ -25,64 +25,78 @@ impl TaskService {
         Ok(tasks)
     }
 
-    pub async fn get(&self, id: &str) -> Result<Task> {
+    pub async fn get(&self, id: &str) -> Result<OrchestratorTask> {
         let state = self.state.read().await;
         state.tasks.get(id).cloned().ok_or_else(|| anyhow::anyhow!("task not found: {}", id))
     }
 
-    pub async fn create(&self, input: TaskCreateInput) -> Result<Task> {
+    pub async fn create(&self, input: TaskCreateInput) -> Result<OrchestratorTask> {
         let mut state = self.state.write().await;
         let id = state.next_task_id();
         let now = Utc::now();
-        let task = Task {
+        let task = OrchestratorTask {
             id: id.clone(),
             title: input.title,
             description: input.description,
             task_type: input.task_type.unwrap_or_default(),
             status: TaskStatus::Backlog,
-            priority: input.priority.unwrap_or_default(),
+            priority: input.priority.unwrap_or(Priority::Medium),
             risk: RiskLevel::default(),
             scope: Scope::default(),
             complexity: Complexity::default(),
-            impact_area: None,
+            impact_area: Vec::new(),
             assignee: Assignee::default(),
-            tags: input.tags,
-            checklist: Vec::new(),
-            dependencies: Vec::new(),
+            estimated_effort: None,
             linked_requirements: input.linked_requirements,
+            linked_architecture_entities: input.linked_architecture_entities,
+            dependencies: Vec::new(),
+            checklist: Vec::new(),
+            tags: input.tags,
+            workflow_metadata: WorkflowMetadata::default(),
+            worktree_path: None,
+            branch_name: None,
             metadata: TaskMetadata {
-                created_at: Some(now),
-                updated_at: Some(now),
+                created_at: now,
+                updated_at: now,
+                created_by: input.created_by.unwrap_or_default(),
+                updated_by: String::new(),
+                started_at: None,
+                completed_at: None,
                 version: 1,
-                ..Default::default()
             },
+            deadline: None,
+            paused: false,
+            cancelled: false,
+            resolution: None,
+            resource_requirements: ResourceRequirements::default(),
+            consecutive_dispatch_failures: None,
+            last_dispatch_failure_at: None,
+            dispatch_history: Vec::new(),
             blocked_reason: None,
             blocked_at: None,
+            blocked_phase: None,
             blocked_by: None,
-            paused: false,
-            dispatch_history: Vec::new(),
-            consecutive_dispatch_failures: 0,
-            deadline: None,
         };
         state.tasks.insert(id.clone(), task.clone());
         state.dirty_tasks.insert(id);
         Ok(task)
     }
 
-    pub async fn update(&self, id: &str, input: TaskUpdateInput) -> Result<Task> {
+    pub async fn update(&self, id: &str, input: TaskUpdateInput) -> Result<OrchestratorTask> {
         let mut state = self.state.write().await;
         let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
 
         if let Some(title) = input.title { task.title = title; }
-        if let Some(desc) = input.description { task.description = Some(desc); }
+        if let Some(desc) = input.description { task.description = desc; }
         if let Some(priority) = input.priority { task.priority = priority; }
-        if let Some(assignee) = input.assignee { task.assignee = assignee; }
         if let Some(tags) = input.tags { task.tags = tags; }
         if let Some(deadline) = input.deadline { task.deadline = Some(deadline); }
+        if let Some(entities) = input.linked_architecture_entities { task.linked_architecture_entities = entities; }
         if let Some(status) = input.status {
-            apply_task_status(task, status)?;
+            apply_task_status(task, status);
         }
-        task.metadata.updated_at = Some(Utc::now());
+        task.metadata.updated_at = Utc::now();
+        task.metadata.updated_by = input.updated_by.unwrap_or_default();
         task.metadata.version += 1;
 
         let task = task.clone();
@@ -90,11 +104,19 @@ impl TaskService {
         Ok(task)
     }
 
-    pub async fn set_status(&self, id: &str, status: TaskStatus) -> Result<Task> {
+    pub async fn replace(&self, task: OrchestratorTask) -> Result<OrchestratorTask> {
+        let mut state = self.state.write().await;
+        let id = task.id.clone();
+        state.tasks.insert(id.clone(), task.clone());
+        state.dirty_tasks.insert(id);
+        Ok(task)
+    }
+
+    pub async fn set_status(&self, id: &str, status: TaskStatus) -> Result<OrchestratorTask> {
         let mut state = self.state.write().await;
         let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
-        apply_task_status(task, status)?;
-        task.metadata.updated_at = Some(Utc::now());
+        apply_task_status(task, status);
+        task.metadata.updated_at = Utc::now();
         task.metadata.version += 1;
         let task = task.clone();
         state.dirty_tasks.insert(id.to_string());
@@ -108,53 +130,53 @@ impl TaskService {
         Ok(())
     }
 
-    pub async fn add_checklist_item(&self, id: &str, description: String) -> Result<Task> {
+    pub async fn add_checklist_item(&self, id: &str, description: String) -> Result<OrchestratorTask> {
         let mut state = self.state.write().await;
         let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
         let item = ChecklistItem {
             id: uuid::Uuid::new_v4().to_string(),
             description,
             completed: false,
-            created_at: Some(Utc::now()),
+            created_at: Utc::now(),
             completed_at: None,
         };
         task.checklist.push(item);
-        task.metadata.updated_at = Some(Utc::now());
+        task.metadata.updated_at = Utc::now();
         task.metadata.version += 1;
         let task = task.clone();
         state.dirty_tasks.insert(id.to_string());
         Ok(task)
     }
 
-    pub async fn update_checklist_item(&self, id: &str, item_id: &str, completed: bool) -> Result<Task> {
+    pub async fn update_checklist_item(&self, id: &str, item_id: &str, completed: bool) -> Result<OrchestratorTask> {
         let mut state = self.state.write().await;
         let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
         let item = task.checklist.iter_mut().find(|i| i.id == item_id)
             .ok_or_else(|| anyhow::anyhow!("checklist item not found: {}", item_id))?;
         item.completed = completed;
         item.completed_at = if completed { Some(Utc::now()) } else { None };
-        task.metadata.updated_at = Some(Utc::now());
+        task.metadata.updated_at = Utc::now();
         task.metadata.version += 1;
         let task = task.clone();
         state.dirty_tasks.insert(id.to_string());
         Ok(task)
     }
 
-    pub async fn add_dependency(&self, id: &str, dep_id: &str, dep_type: DependencyType) -> Result<Task> {
+    pub async fn add_dependency(&self, id: &str, dep_id: &str, dep_type: DependencyType) -> Result<OrchestratorTask> {
         let mut state = self.state.write().await;
         let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
         if task.dependencies.iter().any(|d| d.task_id == dep_id) {
             anyhow::bail!("dependency already exists: {} -> {}", id, dep_id);
         }
         task.dependencies.push(TaskDependency { task_id: dep_id.to_string(), dependency_type: dep_type });
-        task.metadata.updated_at = Some(Utc::now());
+        task.metadata.updated_at = Utc::now();
         task.metadata.version += 1;
         let task = task.clone();
         state.dirty_tasks.insert(id.to_string());
         Ok(task)
     }
 
-    pub async fn remove_dependency(&self, id: &str, dep_id: &str) -> Result<Task> {
+    pub async fn remove_dependency(&self, id: &str, dep_id: &str) -> Result<OrchestratorTask> {
         let mut state = self.state.write().await;
         let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
         let before = task.dependencies.len();
@@ -162,7 +184,7 @@ impl TaskService {
         if task.dependencies.len() == before {
             anyhow::bail!("dependency not found: {} -> {}", id, dep_id);
         }
-        task.metadata.updated_at = Some(Utc::now());
+        task.metadata.updated_at = Utc::now();
         task.metadata.version += 1;
         let task = task.clone();
         state.dirty_tasks.insert(id.to_string());
@@ -177,9 +199,9 @@ impl TaskService {
         let (mut in_progress, mut blocked, mut completed) = (0, 0, 0);
 
         for task in state.tasks.values() {
-            *by_status.entry(format!("{:?}", task.status).to_lowercase()).or_insert(0) += 1;
-            *by_priority.entry(format!("{:?}", task.priority).to_lowercase()).or_insert(0) += 1;
-            *by_type.entry(format!("{:?}", task.task_type).to_lowercase()).or_insert(0) += 1;
+            *by_status.entry(task.status.to_string()).or_insert(0) += 1;
+            *by_priority.entry(task.priority.to_string()).or_insert(0) += 1;
+            *by_type.entry(task.task_type.to_string()).or_insert(0) += 1;
             match task.status {
                 TaskStatus::InProgress => in_progress += 1,
                 TaskStatus::Blocked => blocked += 1,
@@ -200,7 +222,7 @@ impl TaskService {
     }
 }
 
-fn task_matches_filter(task: &Task, filter: &TaskFilter) -> bool {
+fn task_matches_filter(task: &OrchestratorTask, filter: &TaskFilter) -> bool {
     if let Some(ref s) = filter.status {
         if &task.status != s { return false; }
     }
@@ -213,20 +235,20 @@ fn task_matches_filter(task: &Task, filter: &TaskFilter) -> bool {
     if let Some(ref req) = filter.linked_requirement {
         if !task.linked_requirements.contains(req) { return false; }
     }
-    if !filter.tags.is_empty() {
-        if !filter.tags.iter().any(|t| task.tags.contains(t)) { return false; }
+    if let Some(ref tags) = filter.tags {
+        if !tags.is_empty() && !tags.iter().any(|t| task.tags.contains(t)) { return false; }
     }
     if let Some(ref search) = filter.search_text {
         let s = search.to_lowercase();
         let matches = task.title.to_lowercase().contains(&s)
-            || task.description.as_deref().unwrap_or("").to_lowercase().contains(&s)
+            || task.description.to_lowercase().contains(&s)
             || task.id.to_lowercase().contains(&s);
         if !matches { return false; }
     }
     true
 }
 
-fn sort_tasks_by_priority(tasks: &mut [Task]) {
+fn sort_tasks_by_priority(tasks: &mut [OrchestratorTask]) {
     tasks.sort_by(|a, b| {
         a.priority.rank().cmp(&b.priority.rank())
             .then_with(|| b.metadata.updated_at.cmp(&a.metadata.updated_at))
@@ -234,7 +256,7 @@ fn sort_tasks_by_priority(tasks: &mut [Task]) {
     });
 }
 
-fn apply_task_status(task: &mut Task, status: TaskStatus) -> Result<()> {
+fn apply_task_status(task: &mut OrchestratorTask, status: TaskStatus) {
     let now = Utc::now();
     match &status {
         TaskStatus::InProgress => {
@@ -253,12 +275,13 @@ fn apply_task_status(task: &mut Task, status: TaskStatus) -> Result<()> {
             task.blocked_reason = None;
             task.blocked_at = None;
             task.blocked_by = None;
+            task.blocked_phase = None;
         }
         TaskStatus::Cancelled => {
             task.metadata.completed_at = Some(now);
+            task.cancelled = true;
         }
         _ => {}
     }
     task.status = status;
-    Ok(())
 }

@@ -15,9 +15,9 @@ impl RequirementService {
         Self { state }
     }
 
-    pub async fn list(&self, filter: Option<RequirementFilter>) -> Result<Vec<Requirement>> {
+    pub async fn list(&self, filter: Option<RequirementFilter>) -> Result<Vec<RequirementItem>> {
         let state = self.state.read().await;
-        let mut reqs: Vec<Requirement> = state.requirements.values().cloned().collect();
+        let mut reqs: Vec<RequirementItem> = state.requirements.values().cloned().collect();
         if let Some(f) = filter {
             reqs.retain(|r| requirement_matches_filter(r, &f));
         }
@@ -25,49 +25,52 @@ impl RequirementService {
         Ok(reqs)
     }
 
-    pub async fn get(&self, id: &str) -> Result<Requirement> {
+    pub async fn get(&self, id: &str) -> Result<RequirementItem> {
         let state = self.state.read().await;
         state.requirements.get(id).cloned()
             .ok_or_else(|| anyhow::anyhow!("requirement not found: {}", id))
     }
 
-    pub async fn create(&self, input: RequirementCreateInput) -> Result<Requirement> {
+    pub async fn create(&self, input: RequirementCreateInput) -> Result<RequirementItem> {
         let mut state = self.state.write().await;
         let id = state.next_requirement_id();
         let now = Utc::now();
-        let req = Requirement {
+        let req = RequirementItem {
             id: id.clone(),
             title: input.title,
-            description: input.description,
+            description: input.description.unwrap_or_default(),
             body: None,
+            legacy_id: None,
             category: input.category,
-            requirement_type: input.requirement_type.unwrap_or_default(),
+            requirement_type: input.requirement_type.map(Some).unwrap_or(None),
+            acceptance_criteria: input.acceptance_criteria,
             priority: input.priority.unwrap_or_default(),
             status: RequirementStatus::Draft,
-            acceptance_criteria: input.acceptance_criteria,
             source: input.source.unwrap_or_else(|| "manual".to_string()),
             tags: Vec::new(),
-            linked_task_ids: Vec::new(),
+            links: RequirementLinks::default(),
             comments: Vec::new(),
-            created_at: Some(now),
-            updated_at: Some(now),
+            relative_path: None,
+            linked_task_ids: Vec::new(),
+            created_at: now,
+            updated_at: now,
         };
         state.requirements.insert(id.clone(), req.clone());
         state.dirty_requirements.insert(id);
         Ok(req)
     }
 
-    pub async fn update(&self, id: &str, input: RequirementUpdateInput) -> Result<Requirement> {
+    pub async fn update(&self, id: &str, input: RequirementUpdateInput) -> Result<RequirementItem> {
         let mut state = self.state.write().await;
         let req = state.requirements.get_mut(id)
             .ok_or_else(|| anyhow::anyhow!("requirement not found: {}", id))?;
 
         if let Some(title) = input.title { req.title = title; }
-        if let Some(desc) = input.description { req.description = Some(desc); }
+        if let Some(desc) = input.description { req.description = desc; }
         if let Some(priority) = input.priority { req.priority = priority; }
         if let Some(status) = input.status { req.status = status; }
         if let Some(category) = input.category { req.category = Some(category); }
-        if let Some(req_type) = input.requirement_type { req.requirement_type = req_type; }
+        if let Some(req_type) = input.requirement_type { req.requirement_type = Some(req_type); }
         if let Some(criteria) = input.acceptance_criteria {
             if input.replace_acceptance_criteria {
                 req.acceptance_criteria = criteria;
@@ -80,10 +83,18 @@ impl RequirementService {
                 req.linked_task_ids.push(task_id);
             }
         }
-        req.updated_at = Some(Utc::now());
+        req.updated_at = Utc::now();
 
         let req = req.clone();
         state.dirty_requirements.insert(id.to_string());
+        Ok(req)
+    }
+
+    pub async fn upsert(&self, req: RequirementItem) -> Result<RequirementItem> {
+        let mut state = self.state.write().await;
+        let id = req.id.clone();
+        state.requirements.insert(id.clone(), req.clone());
+        state.dirty_requirements.insert(id);
         Ok(req)
     }
 
@@ -95,7 +106,7 @@ impl RequirementService {
         Ok(())
     }
 
-    pub async fn refine(&self, id: &str) -> Result<Requirement> {
+    pub async fn refine(&self, id: &str) -> Result<RequirementItem> {
         let mut state = self.state.write().await;
         let req = state.requirements.get_mut(id)
             .ok_or_else(|| anyhow::anyhow!("requirement not found: {}", id))?;
@@ -104,7 +115,7 @@ impl RequirementService {
         if req.acceptance_criteria.is_empty() {
             req.acceptance_criteria.push("Acceptance criteria to be defined".to_string());
         }
-        req.updated_at = Some(Utc::now());
+        req.updated_at = Utc::now();
 
         let req = req.clone();
         state.dirty_requirements.insert(id.to_string());
@@ -112,7 +123,7 @@ impl RequirementService {
     }
 }
 
-fn requirement_matches_filter(req: &Requirement, filter: &RequirementFilter) -> bool {
+fn requirement_matches_filter(req: &RequirementItem, filter: &RequirementFilter) -> bool {
     if let Some(ref s) = filter.status {
         if &req.status != s { return false; }
     }
@@ -123,18 +134,18 @@ fn requirement_matches_filter(req: &Requirement, filter: &RequirementFilter) -> 
         if req.category.as_deref() != Some(c.as_str()) { return false; }
     }
     if let Some(ref t) = filter.requirement_type {
-        if &req.requirement_type != t { return false; }
+        if req.requirement_type.as_ref() != Some(t) { return false; }
     }
     if let Some(ref task_id) = filter.linked_task_id {
         if !req.linked_task_ids.contains(task_id) { return false; }
     }
-    if !filter.tags.is_empty() {
-        if !filter.tags.iter().any(|t| req.tags.contains(t)) { return false; }
+    if let Some(ref tags) = filter.tags {
+        if !tags.is_empty() && !tags.iter().any(|t| req.tags.contains(t)) { return false; }
     }
     if let Some(ref search) = filter.search_text {
         let s = search.to_lowercase();
         let matches = req.title.to_lowercase().contains(&s)
-            || req.description.as_deref().unwrap_or("").to_lowercase().contains(&s)
+            || req.description.to_lowercase().contains(&s)
             || req.id.to_lowercase().contains(&s);
         if !matches { return false; }
     }

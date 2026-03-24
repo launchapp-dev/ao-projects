@@ -1,13 +1,13 @@
-use ao_projects_protocol::*;
+use ao_projects_protocol::{OrchestratorTask, RequirementItem};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ProjectState {
     #[serde(default)]
-    pub tasks: HashMap<String, Task>,
+    pub tasks: HashMap<String, OrchestratorTask>,
     #[serde(default)]
-    pub requirements: HashMap<String, Requirement>,
+    pub requirements: HashMap<String, RequirementItem>,
 
     #[serde(skip)]
     pub dirty_tasks: HashSet<String>,

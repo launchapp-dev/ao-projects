@@ -4,6 +4,7 @@ use tokio::sync::RwLock;
 use anyhow::Result;
 
 use ao_projects_store::{read_json_or_default, write_json_atomic, scoped_state_root};
+use ao_projects_protocol::{OrchestratorTask, TaskCreateInput};
 use crate::state::ProjectState;
 use super::{TaskService, RequirementService};
 
@@ -49,7 +50,7 @@ impl ProjectHub {
         &self.requirement_service
     }
 
-    pub async fn create_task_linked(&self, input: ao_projects_protocol::TaskCreateInput) -> Result<ao_projects_protocol::Task> {
+    pub async fn create_task_linked(&self, input: TaskCreateInput) -> Result<OrchestratorTask> {
         let linked_reqs = input.linked_requirements.clone();
         let task = self.task_service.create(input).await?;
 
@@ -59,7 +60,7 @@ impl ProjectHub {
                 if let Some(req) = state.requirements.get_mut(req_id) {
                     if !req.linked_task_ids.contains(&task.id) {
                         req.linked_task_ids.push(task.id.clone());
-                        req.updated_at = Some(chrono::Utc::now());
+                        req.updated_at = chrono::Utc::now();
                         state.dirty_requirements.insert(req_id.clone());
                     }
                 }

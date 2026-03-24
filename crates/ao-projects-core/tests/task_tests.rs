@@ -6,7 +6,7 @@ async fn create_and_get_task() {
     let hub = ProjectHub::in_memory();
     let task = hub.tasks().create(TaskCreateInput {
         title: "Test task".into(),
-        description: Some("A description".into()),
+        description: "A description".into(),
         ..Default::default()
     }).await.unwrap();
 

@@ -228,7 +228,7 @@ async fn handle_task(cmd: TaskCommand, hub: &ProjectHub, json: bool) -> Result<(
         TaskCommand::Create { title, description, task_type, priority, tag } => {
             let input = TaskCreateInput {
                 title,
-                description,
+                description: description.unwrap_or_default(),
                 task_type: parse_opt(task_type, "task_type")?,
                 priority: parse_opt(priority, "priority")?,
                 tags: tag,

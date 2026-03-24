@@ -30,6 +30,11 @@ fn parse_requirement_status() {
     assert_eq!("draft".parse::<RequirementStatus>().unwrap(), RequirementStatus::Draft);
     assert_eq!("refined".parse::<RequirementStatus>().unwrap(), RequirementStatus::Refined);
     assert_eq!("planned".parse::<RequirementStatus>().unwrap(), RequirementStatus::Planned);
+    assert_eq!("po-review".parse::<RequirementStatus>().unwrap(), RequirementStatus::PoReview);
+    assert_eq!("em-review".parse::<RequirementStatus>().unwrap(), RequirementStatus::EmReview);
+    assert_eq!("needs-rework".parse::<RequirementStatus>().unwrap(), RequirementStatus::NeedsRework);
+    assert_eq!("approved".parse::<RequirementStatus>().unwrap(), RequirementStatus::Approved);
+    assert_eq!("implemented".parse::<RequirementStatus>().unwrap(), RequirementStatus::Implemented);
 }
 
 #[test]
@@ -44,8 +49,9 @@ fn parse_requirement_priority() {
 fn display_round_trip() {
     let status = TaskStatus::InProgress;
     let s = status.to_string();
-    assert_eq!(s, "in_progress");
+    assert_eq!(s, "in-progress");
     assert_eq!(s.parse::<TaskStatus>().unwrap(), TaskStatus::InProgress);
+    assert_eq!("in_progress".parse::<TaskStatus>().unwrap(), TaskStatus::InProgress);
 }
 
 #[test]

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use ao_projects_protocol::{Task, Requirement};
+use ao_projects_protocol::{OrchestratorTask, RequirementItem};
 use serde::{Deserialize, Serialize};
 
 use super::SyncConfig;
@@ -12,15 +12,15 @@ pub struct SyncClient {
 
 #[derive(Serialize)]
 struct SyncRequest {
-    tasks: Vec<Task>,
-    requirements: Vec<Requirement>,
+    tasks: Vec<OrchestratorTask>,
+    requirements: Vec<RequirementItem>,
     since: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct SyncResponse {
-    pub tasks: Vec<Task>,
-    pub requirements: Vec<Requirement>,
+    pub tasks: Vec<OrchestratorTask>,
+    pub requirements: Vec<RequirementItem>,
     pub conflicts: Vec<SyncConflict>,
     pub server_time: String,
 }
