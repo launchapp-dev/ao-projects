@@ -17,32 +17,71 @@ agents:
     - ao
     - context7
   triager:
-    system_prompt: "You are the ao-projects task triager. Validate tasks and dispatch.\n\
-      \nSTEP 1 \u2014 VALIDATE:\n- Read the task via ao.task.get\n- Check if code already\
-      \ exists\n- Check for existing/merged PRs\n- Check for duplicates\n\nSTEP 2 \u2014\
-      \ DECIDE:\n- SKIP (already done): set \"done\", emit skip verdict\n- SKIP (duplicate):\
-      \ set \"cancelled\", emit skip verdict\n- IMPLEMENT: dispatch to standard workflow\n\
-      \nSTEP 3 \u2014 DISPATCH:\nCall ao.queue.enqueue with task_id and workflow_ref=\"\
-      standard\".\n\nRULES:\n- Check ao.queue.list before dispatching.\n- Search actual\
-      \ code, not just titles.\n"
+    system_prompt: "You are the ao-projects task triager. Validate and dispatch.\n\n\
+      STEP 1 \u2014 VALIDATE:\n- Read task via ao.task.get\n- Check if code already\
+      \ exists for the described changes\n- Check for existing PRs: `gh pr list --state\
+      \ open --head ao/task-<ID>`\n- Check for merged PRs: `gh pr list --state merged\
+      \ --head ao/task-<ID>`\n- Check ao.task.list for duplicates\n\nSTEP 2 \u2014\
+      \ DECIDE:\n- SKIP (done): ao.task.status \u2192 \"done\", verdict \"skip\"\n\
+      - SKIP (duplicate): ao.task.status \u2192 \"cancelled\", verdict \"skip\"\n-\
+      \ IMPLEMENT: proceed to dispatch\n\nSTEP 3 \u2014 DISPATCH:\nCall ao.queue.enqueue\
+      \ with task_id and workflow_ref=\"standard\".\n\nRULES:\n- Check ao.queue.list\
+      \ \u2014 no duplicate enqueues.\n- Search actual code, not just titles.\n"
     model: claude-haiku-4-5
     tool: claude
     mcp_servers:
     - ao
   work-planner:
-    system_prompt: "You are the ao-projects work dispatcher. Feed ready tasks into\
-      \ the triage pipeline.\n\nOn each run:\n1. Check queue depth. If >= 10, STOP.\n\
-      2. Get prioritized ready tasks.\n3. Enqueue with workflow_ref=\"triage\".\n4.\
-      \ Max 3 per run.\n"
+    system_prompt: "You are the ao-projects work dispatcher.\n\nOn each run:\n1. Call\
+      \ ao.queue.list \u2014 if pending + assigned >= 5, STOP.\n2. Call ao.task.prioritized\
+      \ for ready tasks.\n3. For each, check dependencies via ao.task.get.\n4. Enqueue\
+      \ eligible tasks with workflow_ref=\"triage\".\n5. Max 3 per run.\n\nRULES:\n\
+      - ALWAYS workflow_ref=\"triage\".\n- Skip done, cancelled, blocked tasks.\n-\
+      \ Check queue first \u2014 no duplicates.\n"
+    model: claude-haiku-4-5
+    tool: claude
+    mcp_servers:
+    - ao
+  reconciler:
+    system_prompt: "You are the ao-projects reconciler. Fix stale state.\n\n1. Check\
+      \ ao.workflow.list for failed workflows \u2014 set tasks back to \"ready\".\n\
+      2. Check ao.task.list for blocked tasks \u2014 unblock if deps are done.\n3.\
+      \ Check ao.queue.list \u2014 drop assigned entries older than 30 min.\n4. Check\
+      \ for tasks with merged PRs (`gh pr list --state merged --head ao/task-XXX`)\
+      \ \u2014 set to \"done\".\n"
     model: claude-haiku-4-5
     tool: claude
     mcp_servers:
     - ao
   sonnet-reviewer:
-    system_prompt: "You are a code reviewer. Verify that the implementation meets ALL\
-      \ acceptance criteria from the task.\n\n1. Read task via ao.task.get.\n2. Review\
-      \ code against each criterion.\n3. ADVANCE only if all criteria satisfied.\n4.\
-      \ REWORK with specific feedback if not.\n"
+    system_prompt: "You are a code reviewer for the ao-projects Rust workspace.\n\n\
+      1. Read the task via ao.task.get \u2014 understand requirements.\n2. Run `gh\
+      \ pr diff <number>` to review the code changes.\n3. Check: does it compile? Are\
+      \ tests passing? Does it meet acceptance criteria?\n4. ADVANCE only if code is\
+      \ production-ready and all criteria met.\n5. REWORK: post specific feedback on\
+      \ what to fix.\n\nDo NOT make code changes yourself.\n"
+    model: claude-sonnet-4-6
+    tool: claude
+    mcp_servers:
+    - ao
+  pr-sweep:
+    system_prompt: "You are the PR sweep dispatcher. Scan open PRs and dispatch.\n\n\
+      1. Check queue depth: ao.queue.stats. If > 5, SKIP.\n2. List PRs: `gh pr list\
+      \ --state open --base main --json number,title,headRefName,mergeable,statusCheckRollup`\n\
+      3. CONFLICTING \u2192 dispatch rebase-and-retry\n4. CI FAILING \u2192 dispatch\
+      \ rework\n5. MERGEABLE + CI pass \u2192 dispatch pr-review-single\n\nMax 3 dispatches\
+      \ per sweep. Do NOT review or merge yourself.\n"
+    model: claude-haiku-4-5
+    tool: claude
+    mcp_servers:
+    - ao
+  code-reviewer:
+    system_prompt: "You review ONE PR at a time.\n\nExtract PR number from your subject:\
+      \ \"pr-review:#<number> <title>\"\n\n1. Get PR: `gh pr view <number> --json title,body,headRefName,mergeable,statusCheckRollup`\n\
+      2. Check CI passes, mergeable, < 200 files.\n3. Find task from branch (ao/task-XXX).\
+      \ Read via ao.task.get.\n4. Review diff against acceptance criteria.\n5. MERGE:\
+      \ `gh pr merge <number> --squash --delete-branch` + ao.task.status \u2192 done.\n\
+      6. REWORK: post comment, dispatch ao.queue.enqueue workflow_ref=\"rework\".\n"
     model: claude-sonnet-4-6
     tool: claude
     mcp_servers:
@@ -51,13 +90,14 @@ phases:
   triage:
     mode: agent
     agent: triager
-    directive: Validate the task and dispatch to implementation.
+    directive: Validate task and dispatch to implementation.
     capabilities:
       mutates_state: true
   implementation:
     mode: agent
     agent: default
-    directive: Implement production-quality code for this task.
+    directive: Implement production-quality Rust code for this task. Read CLAUDE.md
+      first. Keep changes focused. Run cargo check before committing.
     output_contract:
       kind: implementation_result
       required_fields:
@@ -66,11 +106,36 @@ phases:
     mode: agent
     agent: sonnet-reviewer
     directive: Review implementation against task requirements. Only advance if all
-      acceptance criteria are met.
+      acceptance criteria are met and code compiles clean.
+    decision_contract:
+      required_evidence:
+      - code_review_clean
+      - requirements_met
+      min_confidence: 0.7
+      max_risk: medium
+      allow_missing_decision: false
   work-planning:
     mode: agent
     agent: work-planner
     directive: Scan task backlog, enqueue ready work.
+    capabilities:
+      mutates_state: true
+  task-reconciliation:
+    mode: agent
+    agent: reconciler
+    directive: Fix stale state, unblock tasks, mark merged PRs as done.
+    capabilities:
+      mutates_state: true
+  pr-sweep:
+    mode: agent
+    agent: pr-sweep
+    directive: Scan open PRs and dispatch reviews, rebases, rework.
+    capabilities:
+      mutates_state: true
+  pr-review-single:
+    mode: agent
+    agent: code-reviewer
+    directive: Review one PR against task requirements. Merge or dispatch rework.
     capabilities:
       mutates_state: true
   check-commits:
@@ -103,7 +168,7 @@ phases:
       - 0
   create-pr:
     mode: command
-    directive: Create GitHub PR
+    directive: Create GitHub PR targeting main
     command:
       program: gh
       args:
@@ -116,6 +181,39 @@ phases:
       timeout_secs: 60
       success_exit_codes:
       - 0
+  force-push:
+    mode: command
+    directive: Force push rebased branch
+    command:
+      program: git
+      args:
+      - push
+      - --force-with-lease
+      - origin
+      - HEAD
+      cwd_mode: task_root
+      timeout_secs: 60
+      success_exit_codes:
+      - 0
+      - 1
+      - 128
+  rebase-on-main:
+    mode: agent
+    agent: default
+    directive: "Rebase this branch on main.\n1. git fetch origin main\n2. git rebase\
+      \ origin/main\n3. Resolve conflicts (Cargo.lock: accept theirs + cargo build)\n\
+      4. git rebase --continue\n5. Verify cargo check passes\n"
+    capabilities:
+      mutates_state: true
+  address-review:
+    mode: agent
+    agent: default
+    directive: "Address PR review feedback.\n1. Read task via ao.task.get.\n2. Find\
+      \ PR: gh pr list --state open --head <branch>\n3. Read comments: gh pr view <number>\
+      \ --json reviews,comments\n4. Fix each issue.\n5. git add -A && git commit\n\
+      6. Verify cargo check passes.\n"
+    capabilities:
+      mutates_state: true
   cleanup:
     mode: command
     directive: Clean build artifacts
@@ -133,9 +231,10 @@ workflows:
   - triage
 - id: standard
   name: Standard
-  description: "Implement \u2192 Push \u2192 PR"
+  description: "Implement \u2192 Review \u2192 Push \u2192 PR"
   phases:
   - implementation
+  - code-review
   - check-commits
   - push-branch
   - create-pr
@@ -147,13 +246,48 @@ workflows:
       create_pr: true
       auto_merge: true
       cleanup_worktree: true
+- id: rework
+  name: Rework
+  description: Address review feedback, push fixes
+  phases:
+  - address-review
+  - force-push
+- id: rebase-and-retry
+  name: Rebase and Retry
+  description: Rebase on main, force push
+  phases:
+  - rebase-on-main
+  - force-push
+- id: pr-sweep
+  name: PR Sweep
+  description: Scan PRs, dispatch reviews/rebases/rework
+  phases:
+  - pr-sweep
+- id: pr-review-single
+  name: PR Review
+  description: Review one PR, merge or dispatch rework
+  phases:
+  - pr-review-single
 - id: work-planner
   name: Work Planner
   description: Feed ready tasks into triage
   phases:
   - work-planning
+- id: task-reconciler
+  name: Task Reconciler
+  description: Fix stale state, unblock tasks
+  phases:
+  - task-reconciliation
 schedules:
 - id: work-planner
   cron: '*/10 * * * *'
   workflow_ref: work-planner
+  enabled: true
+- id: task-reconciler
+  cron: '*/10 * * * *'
+  workflow_ref: task-reconciler
+  enabled: true
+- id: pr-sweep
+  cron: '*/10 * * * *'
+  workflow_ref: pr-sweep
   enabled: true
