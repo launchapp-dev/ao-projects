@@ -1,0 +1,23 @@
+[package]
+name = "ao-projects-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI for ao-projects: task and requirement management"
+
+[[bin]]
+name = "ao-projects"
+path = "src/main.rs"
+
+[dependencies]
+ao-projects-protocol = { workspace = true }
+ao-projects-core = { workspace = true }
+ao-projects-store = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true, features = ["env"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+reqwest = { version = "0.12", features = ["json"] }

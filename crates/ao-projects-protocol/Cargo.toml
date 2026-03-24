@@ -1,0 +1,12 @@
+[package]
+name = "ao-projects-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Wire protocol types for ao-projects: tasks, requirements, priorities, filters"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }

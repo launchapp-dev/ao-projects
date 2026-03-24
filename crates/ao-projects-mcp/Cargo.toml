@@ -1,0 +1,22 @@
+[package]
+name = "ao-projects-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MCP server for ao-projects: expose tasks and requirements as MCP tools"
+
+[[bin]]
+name = "ao-projects-mcp"
+path = "src/main.rs"
+
+[dependencies]
+ao-projects-protocol = { workspace = true }
+ao-projects-core = { workspace = true }
+ao-projects-store = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+rmcp = { version = "1.2", features = ["transport-io"] }
