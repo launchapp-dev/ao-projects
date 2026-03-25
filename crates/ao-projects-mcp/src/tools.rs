@@ -97,6 +97,39 @@ struct ChecklistUpdateMcpInput {
     completed: bool,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+struct BulkStatusItem {
+    id: String,
+    status: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+struct TaskBulkStatusInput {
+    updates: Vec<BulkStatusItem>,
+    #[serde(default)]
+    on_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, Default)]
+struct BulkUpdateItem {
+    id: String,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    priority: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+struct TaskBulkUpdateInput {
+    updates: Vec<BulkUpdateItem>,
+    #[serde(default)]
+    on_error: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, Default)]
 struct ReqListInput {
     #[serde(default)]
@@ -271,6 +304,130 @@ impl ProjectsMcpServer {
             .await.map_err(|e| err(e.to_string()))?;
         self.hub.persist().await.map_err(|e| err(e.to_string()))?;
         ok_json(&task)
+    }
+
+    #[tool(
+        name = "projects.task.bulk-status",
+        description = "Batch-update status for multiple tasks in one call.",
+        input_schema = schema_for::<TaskBulkStatusInput>()
+    )]
+    async fn task_bulk_status(&self, params: Parameters<TaskBulkStatusInput>) -> Result<CallToolResult, McpError> {
+        let input = params.0;
+        let stop_on_error = input.on_error.as_deref() == Some("stop");
+        let mut results = Vec::new();
+        let mut errors = Vec::new();
+
+        for item in input.updates {
+            let status: TaskStatus = match serde_json::from_value(serde_json::Value::String(item.status)) {
+                Ok(s) => s,
+                Err(e) => {
+                    errors.push(serde_json::json!({
+                        "id": item.id,
+                        "error": format!("invalid status: {}", e)
+                    }));
+                    if stop_on_error {
+                        break;
+                    }
+                    continue;
+                }
+            };
+
+            match self.hub.tasks().set_status(&item.id, status).await {
+                Ok(task) => results.push(task),
+                Err(e) => {
+                    errors.push(serde_json::json!({
+                        "id": item.id,
+                        "error": e.to_string()
+                    }));
+                    if stop_on_error {
+                        break;
+                    }
+                }
+            }
+        }
+
+        self.hub.persist().await.map_err(|e| err(e.to_string()))?;
+        ok_json(&serde_json::json!({
+            "updated": results.len(),
+            "tasks": results,
+            "errors": errors
+        }))
+    }
+
+    #[tool(
+        name = "projects.task.bulk-update",
+        description = "Batch-update fields for multiple tasks in one call.",
+        input_schema = schema_for::<TaskBulkUpdateInput>()
+    )]
+    async fn task_bulk_update(&self, params: Parameters<TaskBulkUpdateInput>) -> Result<CallToolResult, McpError> {
+        let input = params.0;
+        let stop_on_error = input.on_error.as_deref() == Some("stop");
+        let mut results = Vec::new();
+        let mut errors = Vec::new();
+
+        for item in input.updates {
+            let priority = match item.priority {
+                Some(p) => match serde_json::from_value(serde_json::Value::String(p)) {
+                    Ok(pr) => Some(pr),
+                    Err(e) => {
+                        errors.push(serde_json::json!({
+                            "id": item.id,
+                            "error": format!("invalid priority: {}", e)
+                        }));
+                        if stop_on_error {
+                            break;
+                        }
+                        continue;
+                    }
+                },
+                None => None,
+            };
+
+            let status = match item.status {
+                Some(s) => match serde_json::from_value(serde_json::Value::String(s)) {
+                    Ok(st) => Some(st),
+                    Err(e) => {
+                        errors.push(serde_json::json!({
+                            "id": item.id,
+                            "error": format!("invalid status: {}", e)
+                        }));
+                        if stop_on_error {
+                            break;
+                        }
+                        continue;
+                    }
+                },
+                None => None,
+            };
+
+            let update = TaskUpdateInput {
+                title: item.title,
+                description: item.description,
+                priority,
+                status,
+                ..Default::default()
+            };
+
+            match self.hub.tasks().update(&item.id, update).await {
+                Ok(task) => results.push(task),
+                Err(e) => {
+                    errors.push(serde_json::json!({
+                        "id": item.id,
+                        "error": e.to_string()
+                    }));
+                    if stop_on_error {
+                        break;
+                    }
+                }
+            }
+        }
+
+        self.hub.persist().await.map_err(|e| err(e.to_string()))?;
+        ok_json(&serde_json::json!({
+            "updated": results.len(),
+            "tasks": results,
+            "errors": errors
+        }))
     }
 }
 
