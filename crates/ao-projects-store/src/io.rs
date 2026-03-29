@@ -1,13 +1,12 @@
 use anyhow::{Context, Result};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::fs;
 use std::path::Path;
 
 pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
-    serde_json::from_str(&content)
-        .with_context(|| format!("failed to parse {}", path.display()))
+    let content =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_str(&content).with_context(|| format!("failed to parse {}", path.display()))
 }
 
 pub fn read_json_or_default<T: Default + DeserializeOwned>(path: &Path) -> Result<T> {

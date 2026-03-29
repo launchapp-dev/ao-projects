@@ -1,7 +1,7 @@
-mod task_service;
-mod requirement_service;
 mod hub;
+mod requirement_service;
+mod task_service;
 
-pub use task_service::TaskService;
-pub use requirement_service::RequirementService;
 pub use hub::ProjectHub;
+pub use requirement_service::RequirementService;
+pub use task_service::TaskService;

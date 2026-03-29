@@ -177,7 +177,11 @@ pub struct ResourceRequirements {
 
 impl Default for ResourceRequirements {
     fn default() -> Self {
-        Self { max_cpu_percent: None, max_memory_mb: None, requires_network: true }
+        Self {
+            max_cpu_percent: None,
+            max_memory_mb: None,
+            requires_network: true,
+        }
     }
 }
 

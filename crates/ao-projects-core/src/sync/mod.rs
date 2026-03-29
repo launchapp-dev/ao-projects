@@ -1,5 +1,5 @@
-mod config;
 mod client;
+mod config;
 
-pub use config::SyncConfig;
 pub use client::SyncClient;
+pub use config::SyncConfig;

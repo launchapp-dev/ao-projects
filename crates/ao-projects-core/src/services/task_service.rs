@@ -27,7 +27,11 @@ impl TaskService {
 
     pub async fn get(&self, id: &str) -> Result<OrchestratorTask> {
         let state = self.state.read().await;
-        state.tasks.get(id).cloned().ok_or_else(|| anyhow::anyhow!("task not found: {}", id))
+        state
+            .tasks
+            .get(id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("task not found: {}", id))
     }
 
     pub async fn create(&self, input: TaskCreateInput) -> Result<OrchestratorTask> {
@@ -84,14 +88,29 @@ impl TaskService {
 
     pub async fn update(&self, id: &str, input: TaskUpdateInput) -> Result<OrchestratorTask> {
         let mut state = self.state.write().await;
-        let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
+        let task = state
+            .tasks
+            .get_mut(id)
+            .ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
 
-        if let Some(title) = input.title { task.title = title; }
-        if let Some(desc) = input.description { task.description = desc; }
-        if let Some(priority) = input.priority { task.priority = priority; }
-        if let Some(tags) = input.tags { task.tags = tags; }
-        if let Some(deadline) = input.deadline { task.deadline = Some(deadline); }
-        if let Some(entities) = input.linked_architecture_entities { task.linked_architecture_entities = entities; }
+        if let Some(title) = input.title {
+            task.title = title;
+        }
+        if let Some(desc) = input.description {
+            task.description = desc;
+        }
+        if let Some(priority) = input.priority {
+            task.priority = priority;
+        }
+        if let Some(tags) = input.tags {
+            task.tags = tags;
+        }
+        if let Some(deadline) = input.deadline {
+            task.deadline = Some(deadline);
+        }
+        if let Some(entities) = input.linked_architecture_entities {
+            task.linked_architecture_entities = entities;
+        }
         if let Some(status) = input.status {
             apply_task_status(task, status);
         }
@@ -114,7 +133,10 @@ impl TaskService {
 
     pub async fn set_status(&self, id: &str, status: TaskStatus) -> Result<OrchestratorTask> {
         let mut state = self.state.write().await;
-        let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
+        let task = state
+            .tasks
+            .get_mut(id)
+            .ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
         apply_task_status(task, status);
         task.metadata.updated_at = Utc::now();
         task.metadata.version += 1;
@@ -125,14 +147,24 @@ impl TaskService {
 
     pub async fn delete(&self, id: &str) -> Result<()> {
         let mut state = self.state.write().await;
-        state.tasks.remove(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
+        state
+            .tasks
+            .remove(id)
+            .ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
         state.all_tasks_dirty = true;
         Ok(())
     }
 
-    pub async fn add_checklist_item(&self, id: &str, description: String) -> Result<OrchestratorTask> {
+    pub async fn add_checklist_item(
+        &self,
+        id: &str,
+        description: String,
+    ) -> Result<OrchestratorTask> {
         let mut state = self.state.write().await;
-        let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
+        let task = state
+            .tasks
+            .get_mut(id)
+            .ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
         let item = ChecklistItem {
             id: uuid::Uuid::new_v4().to_string(),
             description,
@@ -148,10 +180,21 @@ impl TaskService {
         Ok(task)
     }
 
-    pub async fn update_checklist_item(&self, id: &str, item_id: &str, completed: bool) -> Result<OrchestratorTask> {
+    pub async fn update_checklist_item(
+        &self,
+        id: &str,
+        item_id: &str,
+        completed: bool,
+    ) -> Result<OrchestratorTask> {
         let mut state = self.state.write().await;
-        let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
-        let item = task.checklist.iter_mut().find(|i| i.id == item_id)
+        let task = state
+            .tasks
+            .get_mut(id)
+            .ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
+        let item = task
+            .checklist
+            .iter_mut()
+            .find(|i| i.id == item_id)
             .ok_or_else(|| anyhow::anyhow!("checklist item not found: {}", item_id))?;
         item.completed = completed;
         item.completed_at = if completed { Some(Utc::now()) } else { None };
@@ -162,13 +205,24 @@ impl TaskService {
         Ok(task)
     }
 
-    pub async fn add_dependency(&self, id: &str, dep_id: &str, dep_type: DependencyType) -> Result<OrchestratorTask> {
+    pub async fn add_dependency(
+        &self,
+        id: &str,
+        dep_id: &str,
+        dep_type: DependencyType,
+    ) -> Result<OrchestratorTask> {
         let mut state = self.state.write().await;
-        let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
+        let task = state
+            .tasks
+            .get_mut(id)
+            .ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
         if task.dependencies.iter().any(|d| d.task_id == dep_id) {
             anyhow::bail!("dependency already exists: {} -> {}", id, dep_id);
         }
-        task.dependencies.push(TaskDependency { task_id: dep_id.to_string(), dependency_type: dep_type });
+        task.dependencies.push(TaskDependency {
+            task_id: dep_id.to_string(),
+            dependency_type: dep_type,
+        });
         task.metadata.updated_at = Utc::now();
         task.metadata.version += 1;
         let task = task.clone();
@@ -178,7 +232,10 @@ impl TaskService {
 
     pub async fn remove_dependency(&self, id: &str, dep_id: &str) -> Result<OrchestratorTask> {
         let mut state = self.state.write().await;
-        let task = state.tasks.get_mut(id).ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
+        let task = state
+            .tasks
+            .get_mut(id)
+            .ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
         let before = task.dependencies.len();
         task.dependencies.retain(|d| d.task_id != dep_id);
         if task.dependencies.len() == before {
@@ -223,34 +280,49 @@ impl TaskService {
 }
 
 fn task_matches_filter(task: &OrchestratorTask, filter: &TaskFilter) -> bool {
-    if let Some(ref s) = filter.status {
-        if &task.status != s { return false; }
+    if let Some(ref s) = filter.status
+        && &task.status != s
+    {
+        return false;
     }
-    if let Some(ref p) = filter.priority {
-        if &task.priority != p { return false; }
+    if let Some(ref p) = filter.priority
+        && &task.priority != p
+    {
+        return false;
     }
-    if let Some(ref t) = filter.task_type {
-        if &task.task_type != t { return false; }
+    if let Some(ref t) = filter.task_type
+        && &task.task_type != t
+    {
+        return false;
     }
-    if let Some(ref req) = filter.linked_requirement {
-        if !task.linked_requirements.contains(req) { return false; }
+    if let Some(ref req) = filter.linked_requirement
+        && !task.linked_requirements.contains(req)
+    {
+        return false;
     }
-    if let Some(ref tags) = filter.tags {
-        if !tags.is_empty() && !tags.iter().any(|t| task.tags.contains(t)) { return false; }
+    if let Some(ref tags) = filter.tags
+        && !tags.is_empty()
+        && !tags.iter().any(|t| task.tags.contains(t))
+    {
+        return false;
     }
     if let Some(ref search) = filter.search_text {
         let s = search.to_lowercase();
         let matches = task.title.to_lowercase().contains(&s)
             || task.description.to_lowercase().contains(&s)
             || task.id.to_lowercase().contains(&s);
-        if !matches { return false; }
+        if !matches {
+            return false;
+        }
     }
     true
 }
 
 fn sort_tasks_by_priority(tasks: &mut [OrchestratorTask]) {
     tasks.sort_by(|a, b| {
-        a.priority.rank().cmp(&b.priority.rank())
+        a.priority
+            .rank()
+            .cmp(&b.priority.rank())
             .then_with(|| b.metadata.updated_at.cmp(&a.metadata.updated_at))
             .then_with(|| a.id.cmp(&b.id))
     });
