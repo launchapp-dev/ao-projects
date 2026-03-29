@@ -280,31 +280,30 @@ impl TaskService {
 }
 
 fn task_matches_filter(task: &OrchestratorTask, filter: &TaskFilter) -> bool {
-    if let Some(ref s) = filter.status
-        && &task.status != s
-    {
-        return false;
+    if let Some(ref s) = filter.status {
+        if &task.status != s {
+            return false;
+        }
     }
-    if let Some(ref p) = filter.priority
-        && &task.priority != p
-    {
-        return false;
+    if let Some(ref p) = filter.priority {
+        if &task.priority != p {
+            return false;
+        }
     }
-    if let Some(ref t) = filter.task_type
-        && &task.task_type != t
-    {
-        return false;
+    if let Some(ref t) = filter.task_type {
+        if &task.task_type != t {
+            return false;
+        }
     }
-    if let Some(ref req) = filter.linked_requirement
-        && !task.linked_requirements.contains(req)
-    {
-        return false;
+    if let Some(ref req) = filter.linked_requirement {
+        if !task.linked_requirements.contains(req) {
+            return false;
+        }
     }
-    if let Some(ref tags) = filter.tags
-        && !tags.is_empty()
-        && !tags.iter().any(|t| task.tags.contains(t))
-    {
-        return false;
+    if let Some(ref tags) = filter.tags {
+        if !tags.is_empty() && !tags.iter().any(|t| task.tags.contains(t)) {
+            return false;
+        }
     }
     if let Some(ref search) = filter.search_text {
         let s = search.to_lowercase();

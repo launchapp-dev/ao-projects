@@ -26,11 +26,11 @@ pub struct SyncResponse {
 }
 
 #[derive(Deserialize)]
-#[allow(unused)]
+#[allow(dead_code)]
 pub struct SyncConflict {
-    pub _type: String,
-    pub _id: String,
-    pub _reason: String,
+    pub r#type: String,
+    pub id: String,
+    pub reason: String,
 }
 
 #[derive(Deserialize)]
@@ -179,15 +179,16 @@ impl SyncClient {
             .send()
             .await;
 
-        if let Ok(resp) = resp
-            && resp.status().is_success()
-            && let Ok(body) = resp.json::<ProjectResponse>().await
-        {
-            return Ok(LinkResult {
-                project_id: Some(body.project.id),
-                project_name: Some(body.project.name),
-                auto_linked: true,
-            });
+        if let Ok(resp) = resp {
+            if resp.status().is_success() {
+                if let Ok(body) = resp.json::<ProjectResponse>().await {
+                    return Ok(LinkResult {
+                        project_id: Some(body.project.id),
+                        project_name: Some(body.project.name),
+                        auto_linked: true,
+                    });
+                }
+            }
         }
 
         Ok(LinkResult {
