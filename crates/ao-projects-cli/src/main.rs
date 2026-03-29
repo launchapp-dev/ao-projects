@@ -2,10 +2,13 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use ao_projects_core::{ProjectHub, SyncConfig, SyncClient};
+use ao_projects_core::{ProjectHub, SyncClient, SyncConfig};
 
 #[derive(Parser)]
-#[command(name = "ao-projects", about = "Task and requirement management for AI-driven pipelines")]
+#[command(
+    name = "ao-projects",
+    about = "Task and requirement management for AI-driven pipelines"
+)]
 struct Cli {
     #[arg(long, env = "AO_PROJECTS_ROOT")]
     project_root: Option<PathBuf>,
@@ -177,7 +180,8 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let cli = Cli::parse();
 
-    let project_root = cli.project_root
+    let project_root = cli
+        .project_root
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."));
 
@@ -194,23 +198,38 @@ async fn main() -> Result<()> {
 }
 
 fn parse_opt<T: std::str::FromStr>(val: Option<String>, name: &str) -> Result<Option<T>>
-where T::Err: std::fmt::Display {
-    val.map(|s| s.parse::<T>().map_err(|e| anyhow::anyhow!("invalid {}: {}", name, e)))
-        .transpose()
+where
+    T::Err: std::fmt::Display,
+{
+    val.map(|s| {
+        s.parse::<T>()
+            .map_err(|e| anyhow::anyhow!("invalid {}: {}", name, e))
+    })
+    .transpose()
 }
 
 async fn handle_task(cmd: TaskCommand, hub: &ProjectHub, json: bool) -> Result<()> {
     use ao_projects_protocol::*;
     match cmd {
-        TaskCommand::List { status, priority, search, limit } => {
+        TaskCommand::List {
+            status,
+            priority,
+            search,
+            limit,
+        } => {
             let filter = TaskFilter {
                 status: parse_opt(status, "status")?,
                 priority: parse_opt(priority, "priority")?,
                 search_text: search,
                 ..Default::default()
             };
-            let has_filter = filter.status.is_some() || filter.priority.is_some() || filter.search_text.is_some();
-            let tasks = hub.tasks().list(if has_filter { Some(filter) } else { None }).await?;
+            let has_filter = filter.status.is_some()
+                || filter.priority.is_some()
+                || filter.search_text.is_some();
+            let tasks = hub
+                .tasks()
+                .list(if has_filter { Some(filter) } else { None })
+                .await?;
             let tasks: Vec<_> = tasks.into_iter().take(limit).collect();
             if json {
                 println!("{}", serde_json::to_string_pretty(&tasks)?);
@@ -225,7 +244,13 @@ async fn handle_task(cmd: TaskCommand, hub: &ProjectHub, json: bool) -> Result<(
             let task = hub.tasks().get(&id).await?;
             println!("{}", serde_json::to_string_pretty(&task)?);
         }
-        TaskCommand::Create { title, description, task_type, priority, tag } => {
+        TaskCommand::Create {
+            title,
+            description,
+            task_type,
+            priority,
+            tag,
+        } => {
             let input = TaskCreateInput {
                 title,
                 description: description.unwrap_or_default(),
@@ -250,7 +275,12 @@ async fn handle_task(cmd: TaskCommand, hub: &ProjectHub, json: bool) -> Result<(
             hub.tasks().delete(&id).await?;
             println!("Deleted {}", id);
         }
-        TaskCommand::Update { id, title, description, priority } => {
+        TaskCommand::Update {
+            id,
+            title,
+            description,
+            priority,
+        } => {
             let input = TaskUpdateInput {
                 title,
                 description,
@@ -264,8 +294,15 @@ async fn handle_task(cmd: TaskCommand, hub: &ProjectHub, json: bool) -> Result<(
             let task = hub.tasks().add_checklist_item(&id, description).await?;
             println!("Added checklist item to {}", task.id);
         }
-        TaskCommand::ChecklistUpdate { id, item_id, completed } => {
-            let task = hub.tasks().update_checklist_item(&id, &item_id, completed).await?;
+        TaskCommand::ChecklistUpdate {
+            id,
+            item_id,
+            completed,
+        } => {
+            let task = hub
+                .tasks()
+                .update_checklist_item(&id, &item_id, completed)
+                .await?;
             println!("Updated checklist on {}", task.id);
         }
     }
@@ -275,7 +312,13 @@ async fn handle_task(cmd: TaskCommand, hub: &ProjectHub, json: bool) -> Result<(
 async fn handle_requirements(cmd: RequirementsCommand, hub: &ProjectHub, json: bool) -> Result<()> {
     use ao_projects_protocol::*;
     match cmd {
-        RequirementsCommand::List { status, priority, category, search, limit } => {
+        RequirementsCommand::List {
+            status,
+            priority,
+            category,
+            search,
+            limit,
+        } => {
             let filter = RequirementFilter {
                 status: parse_opt(status, "status")?,
                 priority: parse_opt(priority, "priority")?,
@@ -283,9 +326,14 @@ async fn handle_requirements(cmd: RequirementsCommand, hub: &ProjectHub, json: b
                 search_text: search,
                 ..Default::default()
             };
-            let has_filter = filter.status.is_some() || filter.priority.is_some()
-                || filter.category.is_some() || filter.search_text.is_some();
-            let reqs = hub.requirements().list(if has_filter { Some(filter) } else { None }).await?;
+            let has_filter = filter.status.is_some()
+                || filter.priority.is_some()
+                || filter.category.is_some()
+                || filter.search_text.is_some();
+            let reqs = hub
+                .requirements()
+                .list(if has_filter { Some(filter) } else { None })
+                .await?;
             let reqs: Vec<_> = reqs.into_iter().take(limit).collect();
             if json {
                 println!("{}", serde_json::to_string_pretty(&reqs)?);
@@ -300,7 +348,13 @@ async fn handle_requirements(cmd: RequirementsCommand, hub: &ProjectHub, json: b
             let req = hub.requirements().get(&id).await?;
             println!("{}", serde_json::to_string_pretty(&req)?);
         }
-        RequirementsCommand::Create { title, description, priority, category, acceptance_criterion } => {
+        RequirementsCommand::Create {
+            title,
+            description,
+            priority,
+            category,
+            acceptance_criterion,
+        } => {
             let input = RequirementCreateInput {
                 title,
                 description,
@@ -312,7 +366,14 @@ async fn handle_requirements(cmd: RequirementsCommand, hub: &ProjectHub, json: b
             let req = hub.requirements().create(input).await?;
             println!("Created {}: {}", req.id, req.title);
         }
-        RequirementsCommand::Update { id, title, description, priority, status, category } => {
+        RequirementsCommand::Update {
+            id,
+            title,
+            description,
+            priority,
+            status,
+            category,
+        } => {
             let input = RequirementUpdateInput {
                 title,
                 description,
@@ -336,7 +397,12 @@ async fn handle_requirements(cmd: RequirementsCommand, hub: &ProjectHub, json: b
     Ok(())
 }
 
-async fn handle_sync(cmd: SyncCommand, hub: &ProjectHub, project_root: &Path, json: bool) -> Result<()> {
+async fn handle_sync(
+    cmd: SyncCommand,
+    hub: &ProjectHub,
+    project_root: &Path,
+    json: bool,
+) -> Result<()> {
     let root_str = project_root.to_string_lossy();
     match cmd {
         SyncCommand::Setup { server, token } => {
@@ -345,7 +411,10 @@ async fn handle_sync(cmd: SyncCommand, hub: &ProjectHub, project_root: &Path, js
             config.token = Some(token);
             config.save_global()?;
             if json {
-                println!("{}", serde_json::json!({"configured": true, "server": server}));
+                println!(
+                    "{}",
+                    serde_json::json!({"configured": true, "server": server})
+                );
             } else {
                 println!("Sync server configured: {}", server);
                 println!("Link project with: ao-projects sync link --project-id <id>");
@@ -356,7 +425,10 @@ async fn handle_sync(cmd: SyncCommand, hub: &ProjectHub, project_root: &Path, js
             config.project_id = Some(project_id.clone());
             config.save_for_project(&root_str)?;
             if json {
-                println!("{}", serde_json::json!({"linked": true, "project_id": project_id}));
+                println!(
+                    "{}",
+                    serde_json::json!({"linked": true, "project_id": project_id})
+                );
             } else {
                 println!("Linked to project: {}", project_id);
             }
@@ -366,14 +438,20 @@ async fn handle_sync(cmd: SyncCommand, hub: &ProjectHub, project_root: &Path, js
             let client = SyncClient::new(config)?;
             let result = client.push(hub).await?;
             if json {
-                println!("{}", serde_json::json!({
-                    "tasks_sent": result.tasks_sent,
-                    "requirements_sent": result.requirements_sent,
-                    "conflicts": result.conflicts,
-                    "server_time": result.server_time,
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "tasks_sent": result.tasks_sent,
+                        "requirements_sent": result.requirements_sent,
+                        "conflicts": result.conflicts,
+                        "server_time": result.server_time,
+                    })
+                );
             } else {
-                println!("Pushed {} tasks, {} requirements", result.tasks_sent, result.requirements_sent);
+                println!(
+                    "Pushed {} tasks, {} requirements",
+                    result.tasks_sent, result.requirements_sent
+                );
                 if result.conflicts > 0 {
                     println!("Conflicts: {}", result.conflicts);
                 }
@@ -384,29 +462,47 @@ async fn handle_sync(cmd: SyncCommand, hub: &ProjectHub, project_root: &Path, js
             let client = SyncClient::new(config)?;
             let result = client.pull(hub).await?;
             if json {
-                println!("{}", serde_json::json!({
-                    "tasks_received": result.tasks_received,
-                    "requirements_received": result.requirements_received,
-                    "server_time": result.server_time,
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "tasks_received": result.tasks_received,
+                        "requirements_received": result.requirements_received,
+                        "server_time": result.server_time,
+                    })
+                );
             } else {
-                println!("Pulled {} tasks, {} requirements", result.tasks_received, result.requirements_received);
+                println!(
+                    "Pulled {} tasks, {} requirements",
+                    result.tasks_received, result.requirements_received
+                );
             }
         }
         SyncCommand::Status => {
             let config = SyncConfig::load_for_project(&root_str);
             if json {
-                println!("{}", serde_json::json!({
-                    "configured": config.is_configured(),
-                    "server": config.server,
-                    "project_id": config.project_id,
-                    "last_synced_at": config.last_synced_at,
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "configured": config.is_configured(),
+                        "server": config.server,
+                        "project_id": config.project_id,
+                        "last_synced_at": config.last_synced_at,
+                    })
+                );
             } else {
                 println!("Configured: {}", config.is_configured());
-                println!("Server: {}", config.server.as_deref().unwrap_or("(not set)"));
-                println!("Project: {}", config.project_id.as_deref().unwrap_or("(not linked)"));
-                println!("Last sync: {}", config.last_synced_at.as_deref().unwrap_or("never"));
+                println!(
+                    "Server: {}",
+                    config.server.as_deref().unwrap_or("(not set)")
+                );
+                println!(
+                    "Project: {}",
+                    config.project_id.as_deref().unwrap_or("(not linked)")
+                );
+                println!(
+                    "Last sync: {}",
+                    config.last_synced_at.as_deref().unwrap_or("never")
+                );
             }
         }
     }
