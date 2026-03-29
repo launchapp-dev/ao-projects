@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod services;
 pub mod state;
 pub mod sync;
