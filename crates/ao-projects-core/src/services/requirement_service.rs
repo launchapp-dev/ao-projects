@@ -95,10 +95,10 @@ impl RequirementService {
                 req.acceptance_criteria.extend(criteria);
             }
         }
-        if let Some(task_id) = input.linked_task_id {
-            if !req.linked_task_ids.contains(&task_id) {
-                req.linked_task_ids.push(task_id);
-            }
+        if let Some(task_id) = input.linked_task_id
+            && !req.linked_task_ids.contains(&task_id)
+        {
+            req.linked_task_ids.push(task_id);
         }
         req.updated_at = Utc::now();
 
@@ -146,35 +146,36 @@ impl RequirementService {
 }
 
 fn requirement_matches_filter(req: &RequirementItem, filter: &RequirementFilter) -> bool {
-    if let Some(ref s) = filter.status {
-        if &req.status != s {
-            return false;
-        }
+    if let Some(ref s) = filter.status
+        && &req.status != s
+    {
+        return false;
     }
-    if let Some(ref p) = filter.priority {
-        if &req.priority != p {
-            return false;
-        }
+    if let Some(ref p) = filter.priority
+        && &req.priority != p
+    {
+        return false;
     }
-    if let Some(ref c) = filter.category {
-        if req.category.as_deref() != Some(c.as_str()) {
-            return false;
-        }
+    if let Some(ref c) = filter.category
+        && req.category.as_deref() != Some(c.as_str())
+    {
+        return false;
     }
-    if let Some(ref t) = filter.requirement_type {
-        if req.requirement_type.as_ref() != Some(t) {
-            return false;
-        }
+    if let Some(ref t) = filter.requirement_type
+        && req.requirement_type.as_ref() != Some(t)
+    {
+        return false;
     }
-    if let Some(ref task_id) = filter.linked_task_id {
-        if !req.linked_task_ids.contains(task_id) {
-            return false;
-        }
+    if let Some(ref task_id) = filter.linked_task_id
+        && !req.linked_task_ids.contains(task_id)
+    {
+        return false;
     }
-    if let Some(ref tags) = filter.tags {
-        if !tags.is_empty() && !tags.iter().any(|t| req.tags.contains(t)) {
-            return false;
-        }
+    if let Some(ref tags) = filter.tags
+        && !tags.is_empty()
+        && !tags.iter().any(|t| req.tags.contains(t))
+    {
+        return false;
     }
     if let Some(ref search) = filter.search_text {
         let s = search.to_lowercase();
