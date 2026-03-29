@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use ao_projects_core::{ProjectHub, SyncConfig, SyncClient};
 
@@ -412,5 +412,3 @@ async fn handle_sync(cmd: SyncCommand, hub: &ProjectHub, project_root: &Path, js
     }
     Ok(())
 }
-
-use std::path::Path;

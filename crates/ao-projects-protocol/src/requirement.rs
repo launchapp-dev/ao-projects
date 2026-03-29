@@ -5,7 +5,7 @@ use crate::common::RequirementPriority;
 
 // --- RequirementType: kebab-case with aliases ---
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum RequirementType {
     Product,
@@ -13,13 +13,8 @@ pub enum RequirementType {
     #[serde(alias = "nonfunctional")]
     NonFunctional,
     Technical,
+    #[default]
     Other,
-}
-
-impl Default for RequirementType {
-    fn default() -> Self {
-        Self::Other
-    }
 }
 
 // --- RequirementStatus: kebab-case, all 11 variants ---

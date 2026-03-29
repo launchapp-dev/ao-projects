@@ -5,9 +5,10 @@ use crate::common::*;
 
 // --- TaskStatus: kebab-case with aliases, matches AO exactly ---
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum TaskStatus {
+    #[default]
     #[serde(alias = "todo")]
     Backlog,
     Ready,
@@ -19,12 +20,6 @@ pub enum TaskStatus {
     #[serde(alias = "completed")]
     Done,
     Cancelled,
-}
-
-impl Default for TaskStatus {
-    fn default() -> Self {
-        Self::Backlog
-    }
 }
 
 impl TaskStatus {
@@ -74,9 +69,10 @@ impl std::str::FromStr for TaskStatus {
 
 // --- TaskType: lowercase with aliases ---
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskType {
+    #[default]
     Feature,
     #[serde(alias = "bug")]
     Bugfix,
@@ -89,12 +85,6 @@ pub enum TaskType {
     Test,
     Chore,
     Experiment,
-}
-
-impl Default for TaskType {
-    fn default() -> Self {
-        Self::Feature
-    }
 }
 
 impl TaskType {
