@@ -26,11 +26,11 @@ pub struct SyncResponse {
 }
 
 #[derive(Deserialize)]
-#[allow(unused)]
+#[allow(dead_code)]
 pub struct SyncConflict {
-    pub _type: String,
-    pub _id: String,
-    pub _reason: String,
+    pub r#type: String,
+    pub id: String,
+    pub reason: String,
 }
 
 #[derive(Deserialize)]
