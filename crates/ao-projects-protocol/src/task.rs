@@ -10,7 +10,6 @@ use crate::common::*;
 pub enum TaskStatus {
     #[default]
     #[serde(alias = "todo")]
-    #[default]
     Backlog,
     Ready,
     #[serde(alias = "in_progress", alias = "inprogress")]
