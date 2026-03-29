@@ -379,26 +379,30 @@ impl ProjectsMcpServer {
         description = "Batch-update status for multiple tasks in one call.",
         input_schema = schema_for::<TaskBulkStatusInput>()
     )]
-    async fn task_bulk_status(&self, params: Parameters<TaskBulkStatusInput>) -> Result<CallToolResult, McpError> {
+    async fn task_bulk_status(
+        &self,
+        params: Parameters<TaskBulkStatusInput>,
+    ) -> Result<CallToolResult, McpError> {
         let input = params.0;
         let stop_on_error = input.on_error.as_deref() == Some("stop");
         let mut results = Vec::new();
         let mut errors = Vec::new();
 
         for item in input.updates {
-            let status: TaskStatus = match serde_json::from_value(serde_json::Value::String(item.status)) {
-                Ok(s) => s,
-                Err(e) => {
-                    errors.push(serde_json::json!({
-                        "id": item.id,
-                        "error": format!("invalid status: {}", e)
-                    }));
-                    if stop_on_error {
-                        break;
+            let status: TaskStatus =
+                match serde_json::from_value(serde_json::Value::String(item.status)) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        errors.push(serde_json::json!({
+                            "id": item.id,
+                            "error": format!("invalid status: {}", e)
+                        }));
+                        if stop_on_error {
+                            break;
+                        }
+                        continue;
                     }
-                    continue;
-                }
-            };
+                };
 
             match self.hub.tasks().set_status(&item.id, status).await {
                 Ok(task) => results.push(task),
@@ -427,7 +431,10 @@ impl ProjectsMcpServer {
         description = "Batch-update fields for multiple tasks in one call.",
         input_schema = schema_for::<TaskBulkUpdateInput>()
     )]
-    async fn task_bulk_update(&self, params: Parameters<TaskBulkUpdateInput>) -> Result<CallToolResult, McpError> {
+    async fn task_bulk_update(
+        &self,
+        params: Parameters<TaskBulkUpdateInput>,
+    ) -> Result<CallToolResult, McpError> {
         let input = params.0;
         let stop_on_error = input.on_error.as_deref() == Some("stop");
         let mut results = Vec::new();
