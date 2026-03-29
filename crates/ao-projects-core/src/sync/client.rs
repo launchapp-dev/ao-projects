@@ -124,7 +124,7 @@ impl SyncClient {
         })
     }
 
-    pub async fn pull(&self, _hub: &ProjectHub) -> Result<PullResult> {
+    pub async fn pull(&self, hub: &ProjectHub) -> Result<PullResult> {
         let project_id = self.config.project_id.as_ref().ok_or_else(|| {
             anyhow::anyhow!("No project linked. Run: ao-projects sync link --project-id <id>")
         })?;
