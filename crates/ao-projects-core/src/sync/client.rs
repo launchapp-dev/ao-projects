@@ -26,10 +26,11 @@ pub struct SyncResponse {
 }
 
 #[derive(Deserialize)]
+#[allow(unused)]
 pub struct SyncConflict {
-    pub r#type: String,
-    pub id: String,
-    pub reason: String,
+    pub _type: String,
+    pub _id: String,
+    pub _reason: String,
 }
 
 #[derive(Deserialize)]
@@ -81,8 +82,9 @@ impl SyncClient {
     }
 
     pub async fn push(&self, hub: &ProjectHub) -> Result<PushResult> {
-        let project_id = self.config.project_id.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("No project linked. Run: ao-projects sync link --project-id <id>"))?;
+        let project_id = self.config.project_id.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("No project linked. Run: ao-projects sync link --project-id <id>")
+        })?;
         let server = self.config.server_url()?;
 
         let tasks = hub.tasks().list(None).await?;
@@ -90,8 +92,13 @@ impl SyncClient {
         let tasks_count = tasks.len();
         let reqs_count = requirements.len();
 
-        let resp = self.http
-            .post(format!("{}/api/projects/{}/sync", server.trim_end_matches('/'), project_id))
+        let resp = self
+            .http
+            .post(format!(
+                "{}/api/projects/{}/sync",
+                server.trim_end_matches('/'),
+                project_id
+            ))
             .json(&SyncRequest {
                 tasks,
                 requirements,
@@ -117,13 +124,19 @@ impl SyncClient {
         })
     }
 
-    pub async fn pull(&self, hub: &ProjectHub) -> Result<PullResult> {
-        let project_id = self.config.project_id.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("No project linked. Run: ao-projects sync link --project-id <id>"))?;
+    pub async fn pull(&self, _hub: &ProjectHub) -> Result<PullResult> {
+        let project_id = self.config.project_id.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("No project linked. Run: ao-projects sync link --project-id <id>")
+        })?;
         let server = self.config.server_url()?;
 
-        let resp = self.http
-            .post(format!("{}/api/projects/{}/sync", server.trim_end_matches('/'), project_id))
+        let resp = self
+            .http
+            .post(format!(
+                "{}/api/projects/{}/sync",
+                server.trim_end_matches('/'),
+                project_id
+            ))
             .json(&SyncRequest {
                 tasks: vec![],
                 requirements: vec![],
@@ -156,21 +169,25 @@ impl SyncClient {
     pub async fn auto_link(&self, git_origin_url: &str) -> Result<LinkResult> {
         let server = self.config.server_url()?;
         let encoded = urlencoding(git_origin_url);
-        let resp = self.http
-            .get(format!("{}/api/projects/by-repo?url={}", server.trim_end_matches('/'), encoded))
+        let resp = self
+            .http
+            .get(format!(
+                "{}/api/projects/by-repo?url={}",
+                server.trim_end_matches('/'),
+                encoded
+            ))
             .send()
             .await;
 
-        if let Ok(resp) = resp {
-            if resp.status().is_success() {
-                if let Ok(body) = resp.json::<ProjectResponse>().await {
-                    return Ok(LinkResult {
-                        project_id: Some(body.project.id),
-                        project_name: Some(body.project.name),
-                        auto_linked: true,
-                    });
-                }
-            }
+        if let Ok(resp) = resp
+            && resp.status().is_success()
+            && let Ok(body) = resp.json::<ProjectResponse>().await
+        {
+            return Ok(LinkResult {
+                project_id: Some(body.project.id),
+                project_name: Some(body.project.name),
+                auto_linked: true,
+            });
         }
 
         Ok(LinkResult {

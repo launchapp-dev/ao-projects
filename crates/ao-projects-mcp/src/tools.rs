@@ -1,12 +1,12 @@
 use ao_projects_core::ProjectHub;
 use ao_projects_protocol::*;
+use rmcp::schemars::{self, JsonSchema};
 use rmcp::{
+    ErrorData as McpError, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router,
-    ErrorData as McpError, ServerHandler,
 };
-use rmcp::schemars::{self, JsonSchema};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
@@ -25,8 +25,11 @@ impl ProjectsMcpServer {
 }
 
 fn ok_json<T: Serialize>(value: &T) -> Result<CallToolResult, McpError> {
-    let text = serde_json::to_string_pretty(value).unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"));
-    Ok(CallToolResult::success(vec![rmcp::model::Content::text(text)]))
+    let text =
+        serde_json::to_string_pretty(value).unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"));
+    Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+        text,
+    )]))
 }
 
 fn err(msg: String) -> McpError {
@@ -185,9 +188,13 @@ impl ProjectsMcpServer {
         description = "List tasks with optional filters (status, priority, search). Returns tasks sorted by priority.",
         input_schema = schema_for::<TaskListInput>()
     )]
-    async fn task_list(&self, params: Parameters<TaskListInput>) -> Result<CallToolResult, McpError> {
+    async fn task_list(
+        &self,
+        params: Parameters<TaskListInput>,
+    ) -> Result<CallToolResult, McpError> {
         let input = params.0;
-        let filter = if input.status.is_some() || input.priority.is_some() || input.search.is_some() {
+        let filter = if input.status.is_some() || input.priority.is_some() || input.search.is_some()
+        {
             Some(TaskFilter {
                 search_text: input.search,
                 ..Default::default()
@@ -195,7 +202,12 @@ impl ProjectsMcpServer {
         } else {
             None
         };
-        let tasks = self.hub.tasks().list(filter).await.map_err(|e| err(e.to_string()))?;
+        let tasks = self
+            .hub
+            .tasks()
+            .list(filter)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         let limited: Vec<_> = tasks.into_iter().take(input.limit.unwrap_or(50)).collect();
         ok_json(&limited)
     }
@@ -206,7 +218,12 @@ impl ProjectsMcpServer {
         input_schema = schema_for::<IdInput>()
     )]
     async fn task_get(&self, params: Parameters<IdInput>) -> Result<CallToolResult, McpError> {
-        let task = self.hub.tasks().get(&params.0.id).await.map_err(|e| err(e.to_string()))?;
+        let task = self
+            .hub
+            .tasks()
+            .get(&params.0.id)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         ok_json(&task)
     }
 
@@ -215,7 +232,10 @@ impl ProjectsMcpServer {
         description = "Create a new task. Returns the created task with generated ID.",
         input_schema = schema_for::<TaskCreateMcpInput>()
     )]
-    async fn task_create(&self, params: Parameters<TaskCreateMcpInput>) -> Result<CallToolResult, McpError> {
+    async fn task_create(
+        &self,
+        params: Parameters<TaskCreateMcpInput>,
+    ) -> Result<CallToolResult, McpError> {
         let input = params.0;
         let create = TaskCreateInput {
             title: input.title,
@@ -224,7 +244,12 @@ impl ProjectsMcpServer {
             linked_requirements: input.linked_requirements,
             ..Default::default()
         };
-        let task = self.hub.tasks().create(create).await.map_err(|e| err(e.to_string()))?;
+        let task = self
+            .hub
+            .tasks()
+            .create(create)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         self.hub.persist().await.map_err(|e| err(e.to_string()))?;
         ok_json(&task)
     }
@@ -234,14 +259,22 @@ impl ProjectsMcpServer {
         description = "Update task fields (title, description, priority).",
         input_schema = schema_for::<TaskUpdateMcpInput>()
     )]
-    async fn task_update(&self, params: Parameters<TaskUpdateMcpInput>) -> Result<CallToolResult, McpError> {
+    async fn task_update(
+        &self,
+        params: Parameters<TaskUpdateMcpInput>,
+    ) -> Result<CallToolResult, McpError> {
         let input = params.0;
         let update = TaskUpdateInput {
             title: input.title,
             description: input.description,
             ..Default::default()
         };
-        let task = self.hub.tasks().update(&input.id, update).await.map_err(|e| err(e.to_string()))?;
+        let task = self
+            .hub
+            .tasks()
+            .update(&input.id, update)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         self.hub.persist().await.map_err(|e| err(e.to_string()))?;
         ok_json(&task)
     }
@@ -251,11 +284,19 @@ impl ProjectsMcpServer {
         description = "Set task status (backlog, ready, in_progress, blocked, on_hold, done, cancelled).",
         input_schema = schema_for::<TaskStatusMcpInput>()
     )]
-    async fn task_status(&self, params: Parameters<TaskStatusMcpInput>) -> Result<CallToolResult, McpError> {
+    async fn task_status(
+        &self,
+        params: Parameters<TaskStatusMcpInput>,
+    ) -> Result<CallToolResult, McpError> {
         let input = params.0;
         let status: TaskStatus = serde_json::from_value(serde_json::Value::String(input.status))
             .map_err(|e| err(format!("invalid status: {e}")))?;
-        let task = self.hub.tasks().set_status(&input.id, status).await.map_err(|e| err(e.to_string()))?;
+        let task = self
+            .hub
+            .tasks()
+            .set_status(&input.id, status)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         self.hub.persist().await.map_err(|e| err(e.to_string()))?;
         ok_json(&task)
     }
@@ -266,7 +307,11 @@ impl ProjectsMcpServer {
         input_schema = schema_for::<IdInput>()
     )]
     async fn task_delete(&self, params: Parameters<IdInput>) -> Result<CallToolResult, McpError> {
-        self.hub.tasks().delete(&params.0.id).await.map_err(|e| err(e.to_string()))?;
+        self.hub
+            .tasks()
+            .delete(&params.0.id)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         self.hub.persist().await.map_err(|e| err(e.to_string()))?;
         ok_json(&serde_json::json!({"deleted": true, "id": params.0.id}))
     }
@@ -276,8 +321,16 @@ impl ProjectsMcpServer {
         description = "Get aggregate task statistics (counts by status, priority, type).",
         input_schema = schema_for::<serde_json::Value>()
     )]
-    async fn task_stats(&self, _params: Parameters<serde_json::Value>) -> Result<CallToolResult, McpError> {
-        let stats = self.hub.tasks().statistics().await.map_err(|e| err(e.to_string()))?;
+    async fn task_stats(
+        &self,
+        _params: Parameters<serde_json::Value>,
+    ) -> Result<CallToolResult, McpError> {
+        let stats = self
+            .hub
+            .tasks()
+            .statistics()
+            .await
+            .map_err(|e| err(e.to_string()))?;
         ok_json(&stats)
     }
 
@@ -286,9 +339,17 @@ impl ProjectsMcpServer {
         description = "Add a checklist item to a task.",
         input_schema = schema_for::<ChecklistAddMcpInput>()
     )]
-    async fn task_checklist_add(&self, params: Parameters<ChecklistAddMcpInput>) -> Result<CallToolResult, McpError> {
+    async fn task_checklist_add(
+        &self,
+        params: Parameters<ChecklistAddMcpInput>,
+    ) -> Result<CallToolResult, McpError> {
         let input = params.0;
-        let task = self.hub.tasks().add_checklist_item(&input.id, input.description).await.map_err(|e| err(e.to_string()))?;
+        let task = self
+            .hub
+            .tasks()
+            .add_checklist_item(&input.id, input.description)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         self.hub.persist().await.map_err(|e| err(e.to_string()))?;
         ok_json(&task)
     }
@@ -298,10 +359,17 @@ impl ProjectsMcpServer {
         description = "Update a checklist item completion status.",
         input_schema = schema_for::<ChecklistUpdateMcpInput>()
     )]
-    async fn task_checklist_update(&self, params: Parameters<ChecklistUpdateMcpInput>) -> Result<CallToolResult, McpError> {
+    async fn task_checklist_update(
+        &self,
+        params: Parameters<ChecklistUpdateMcpInput>,
+    ) -> Result<CallToolResult, McpError> {
         let input = params.0;
-        let task = self.hub.tasks().update_checklist_item(&input.id, &input.item_id, input.completed)
-            .await.map_err(|e| err(e.to_string()))?;
+        let task = self
+            .hub
+            .tasks()
+            .update_checklist_item(&input.id, &input.item_id, input.completed)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         self.hub.persist().await.map_err(|e| err(e.to_string()))?;
         ok_json(&task)
     }
@@ -311,26 +379,30 @@ impl ProjectsMcpServer {
         description = "Batch-update status for multiple tasks in one call.",
         input_schema = schema_for::<TaskBulkStatusInput>()
     )]
-    async fn task_bulk_status(&self, params: Parameters<TaskBulkStatusInput>) -> Result<CallToolResult, McpError> {
+    async fn task_bulk_status(
+        &self,
+        params: Parameters<TaskBulkStatusInput>,
+    ) -> Result<CallToolResult, McpError> {
         let input = params.0;
         let stop_on_error = input.on_error.as_deref() == Some("stop");
         let mut results = Vec::new();
         let mut errors = Vec::new();
 
         for item in input.updates {
-            let status: TaskStatus = match serde_json::from_value(serde_json::Value::String(item.status)) {
-                Ok(s) => s,
-                Err(e) => {
-                    errors.push(serde_json::json!({
-                        "id": item.id,
-                        "error": format!("invalid status: {}", e)
-                    }));
-                    if stop_on_error {
-                        break;
+            let status: TaskStatus =
+                match serde_json::from_value(serde_json::Value::String(item.status)) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        errors.push(serde_json::json!({
+                            "id": item.id,
+                            "error": format!("invalid status: {}", e)
+                        }));
+                        if stop_on_error {
+                            break;
+                        }
+                        continue;
                     }
-                    continue;
-                }
-            };
+                };
 
             match self.hub.tasks().set_status(&item.id, status).await {
                 Ok(task) => results.push(task),
@@ -359,7 +431,10 @@ impl ProjectsMcpServer {
         description = "Batch-update fields for multiple tasks in one call.",
         input_schema = schema_for::<TaskBulkUpdateInput>()
     )]
-    async fn task_bulk_update(&self, params: Parameters<TaskBulkUpdateInput>) -> Result<CallToolResult, McpError> {
+    async fn task_bulk_update(
+        &self,
+        params: Parameters<TaskBulkUpdateInput>,
+    ) -> Result<CallToolResult, McpError> {
         let input = params.0;
         let stop_on_error = input.on_error.as_deref() == Some("stop");
         let mut results = Vec::new();
@@ -442,7 +517,11 @@ impl ProjectsMcpServer {
     )]
     async fn req_list(&self, params: Parameters<ReqListInput>) -> Result<CallToolResult, McpError> {
         let input = params.0;
-        let filter = if input.status.is_some() || input.priority.is_some() || input.category.is_some() || input.search.is_some() {
+        let filter = if input.status.is_some()
+            || input.priority.is_some()
+            || input.category.is_some()
+            || input.search.is_some()
+        {
             Some(RequirementFilter {
                 search_text: input.search,
                 category: input.category,
@@ -451,7 +530,12 @@ impl ProjectsMcpServer {
         } else {
             None
         };
-        let reqs = self.hub.requirements().list(filter).await.map_err(|e| err(e.to_string()))?;
+        let reqs = self
+            .hub
+            .requirements()
+            .list(filter)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         let limited: Vec<_> = reqs.into_iter().take(input.limit.unwrap_or(50)).collect();
         ok_json(&limited)
     }
@@ -462,7 +546,12 @@ impl ProjectsMcpServer {
         input_schema = schema_for::<IdInput>()
     )]
     async fn req_get(&self, params: Parameters<IdInput>) -> Result<CallToolResult, McpError> {
-        let req = self.hub.requirements().get(&params.0.id).await.map_err(|e| err(e.to_string()))?;
+        let req = self
+            .hub
+            .requirements()
+            .get(&params.0.id)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         ok_json(&req)
     }
 
@@ -471,7 +560,10 @@ impl ProjectsMcpServer {
         description = "Create a new requirement. Returns the created requirement with generated ID.",
         input_schema = schema_for::<ReqCreateMcpInput>()
     )]
-    async fn req_create(&self, params: Parameters<ReqCreateMcpInput>) -> Result<CallToolResult, McpError> {
+    async fn req_create(
+        &self,
+        params: Parameters<ReqCreateMcpInput>,
+    ) -> Result<CallToolResult, McpError> {
         let input = params.0;
         let create = RequirementCreateInput {
             title: input.title,
@@ -480,7 +572,12 @@ impl ProjectsMcpServer {
             acceptance_criteria: input.acceptance_criteria,
             ..Default::default()
         };
-        let req = self.hub.requirements().create(create).await.map_err(|e| err(e.to_string()))?;
+        let req = self
+            .hub
+            .requirements()
+            .create(create)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         self.hub.persist().await.map_err(|e| err(e.to_string()))?;
         ok_json(&req)
     }
@@ -490,7 +587,10 @@ impl ProjectsMcpServer {
         description = "Update requirement fields (title, description, priority, status, category).",
         input_schema = schema_for::<ReqUpdateMcpInput>()
     )]
-    async fn req_update(&self, params: Parameters<ReqUpdateMcpInput>) -> Result<CallToolResult, McpError> {
+    async fn req_update(
+        &self,
+        params: Parameters<ReqUpdateMcpInput>,
+    ) -> Result<CallToolResult, McpError> {
         let input = params.0;
         let update = RequirementUpdateInput {
             title: input.title,
@@ -498,7 +598,12 @@ impl ProjectsMcpServer {
             category: input.category,
             ..Default::default()
         };
-        let req = self.hub.requirements().update(&input.id, update).await.map_err(|e| err(e.to_string()))?;
+        let req = self
+            .hub
+            .requirements()
+            .update(&input.id, update)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         self.hub.persist().await.map_err(|e| err(e.to_string()))?;
         ok_json(&req)
     }
@@ -509,7 +614,11 @@ impl ProjectsMcpServer {
         input_schema = schema_for::<IdInput>()
     )]
     async fn req_delete(&self, params: Parameters<IdInput>) -> Result<CallToolResult, McpError> {
-        self.hub.requirements().delete(&params.0.id).await.map_err(|e| err(e.to_string()))?;
+        self.hub
+            .requirements()
+            .delete(&params.0.id)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         self.hub.persist().await.map_err(|e| err(e.to_string()))?;
         ok_json(&serde_json::json!({"deleted": true, "id": params.0.id}))
     }
@@ -520,7 +629,12 @@ impl ProjectsMcpServer {
         input_schema = schema_for::<IdInput>()
     )]
     async fn req_refine(&self, params: Parameters<IdInput>) -> Result<CallToolResult, McpError> {
-        let req = self.hub.requirements().refine(&params.0.id).await.map_err(|e| err(e.to_string()))?;
+        let req = self
+            .hub
+            .requirements()
+            .refine(&params.0.id)
+            .await
+            .map_err(|e| err(e.to_string()))?;
         self.hub.persist().await.map_err(|e| err(e.to_string()))?;
         ok_json(&req)
     }
@@ -531,7 +645,8 @@ impl ProjectsMcpServer {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for ProjectsMcpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions("Task and requirement management tools for AI-driven development pipelines.")
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            "Task and requirement management tools for AI-driven development pipelines.",
+        )
     }
 }

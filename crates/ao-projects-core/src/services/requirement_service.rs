@@ -27,7 +27,10 @@ impl RequirementService {
 
     pub async fn get(&self, id: &str) -> Result<RequirementItem> {
         let state = self.state.read().await;
-        state.requirements.get(id).cloned()
+        state
+            .requirements
+            .get(id)
+            .cloned()
             .ok_or_else(|| anyhow::anyhow!("requirement not found: {}", id))
     }
 
@@ -62,15 +65,29 @@ impl RequirementService {
 
     pub async fn update(&self, id: &str, input: RequirementUpdateInput) -> Result<RequirementItem> {
         let mut state = self.state.write().await;
-        let req = state.requirements.get_mut(id)
+        let req = state
+            .requirements
+            .get_mut(id)
             .ok_or_else(|| anyhow::anyhow!("requirement not found: {}", id))?;
 
-        if let Some(title) = input.title { req.title = title; }
-        if let Some(desc) = input.description { req.description = desc; }
-        if let Some(priority) = input.priority { req.priority = priority; }
-        if let Some(status) = input.status { req.status = status; }
-        if let Some(category) = input.category { req.category = Some(category); }
-        if let Some(req_type) = input.requirement_type { req.requirement_type = Some(req_type); }
+        if let Some(title) = input.title {
+            req.title = title;
+        }
+        if let Some(desc) = input.description {
+            req.description = desc;
+        }
+        if let Some(priority) = input.priority {
+            req.priority = priority;
+        }
+        if let Some(status) = input.status {
+            req.status = status;
+        }
+        if let Some(category) = input.category {
+            req.category = Some(category);
+        }
+        if let Some(req_type) = input.requirement_type {
+            req.requirement_type = Some(req_type);
+        }
         if let Some(criteria) = input.acceptance_criteria {
             if input.replace_acceptance_criteria {
                 req.acceptance_criteria = criteria;
@@ -78,10 +95,10 @@ impl RequirementService {
                 req.acceptance_criteria.extend(criteria);
             }
         }
-        if let Some(task_id) = input.linked_task_id {
-            if !req.linked_task_ids.contains(&task_id) {
-                req.linked_task_ids.push(task_id);
-            }
+        if let Some(task_id) = input.linked_task_id
+            && !req.linked_task_ids.contains(&task_id)
+        {
+            req.linked_task_ids.push(task_id);
         }
         req.updated_at = Utc::now();
 
@@ -100,7 +117,9 @@ impl RequirementService {
 
     pub async fn delete(&self, id: &str) -> Result<()> {
         let mut state = self.state.write().await;
-        state.requirements.remove(id)
+        state
+            .requirements
+            .remove(id)
             .ok_or_else(|| anyhow::anyhow!("requirement not found: {}", id))?;
         state.all_requirements_dirty = true;
         Ok(())
@@ -108,12 +127,15 @@ impl RequirementService {
 
     pub async fn refine(&self, id: &str) -> Result<RequirementItem> {
         let mut state = self.state.write().await;
-        let req = state.requirements.get_mut(id)
+        let req = state
+            .requirements
+            .get_mut(id)
             .ok_or_else(|| anyhow::anyhow!("requirement not found: {}", id))?;
 
         req.status = RequirementStatus::Refined;
         if req.acceptance_criteria.is_empty() {
-            req.acceptance_criteria.push("Acceptance criteria to be defined".to_string());
+            req.acceptance_criteria
+                .push("Acceptance criteria to be defined".to_string());
         }
         req.updated_at = Utc::now();
 
@@ -124,30 +146,45 @@ impl RequirementService {
 }
 
 fn requirement_matches_filter(req: &RequirementItem, filter: &RequirementFilter) -> bool {
-    if let Some(ref s) = filter.status {
-        if &req.status != s { return false; }
+    if let Some(ref s) = filter.status
+        && &req.status != s
+    {
+        return false;
     }
-    if let Some(ref p) = filter.priority {
-        if &req.priority != p { return false; }
+    if let Some(ref p) = filter.priority
+        && &req.priority != p
+    {
+        return false;
     }
-    if let Some(ref c) = filter.category {
-        if req.category.as_deref() != Some(c.as_str()) { return false; }
+    if let Some(ref c) = filter.category
+        && req.category.as_deref() != Some(c.as_str())
+    {
+        return false;
     }
-    if let Some(ref t) = filter.requirement_type {
-        if req.requirement_type.as_ref() != Some(t) { return false; }
+    if let Some(ref t) = filter.requirement_type
+        && req.requirement_type.as_ref() != Some(t)
+    {
+        return false;
     }
-    if let Some(ref task_id) = filter.linked_task_id {
-        if !req.linked_task_ids.contains(task_id) { return false; }
+    if let Some(ref task_id) = filter.linked_task_id
+        && !req.linked_task_ids.contains(task_id)
+    {
+        return false;
     }
-    if let Some(ref tags) = filter.tags {
-        if !tags.is_empty() && !tags.iter().any(|t| req.tags.contains(t)) { return false; }
+    if let Some(ref tags) = filter.tags
+        && !tags.is_empty()
+        && !tags.iter().any(|t| req.tags.contains(t))
+    {
+        return false;
     }
     if let Some(ref search) = filter.search_text {
         let s = search.to_lowercase();
         let matches = req.title.to_lowercase().contains(&s)
             || req.description.to_lowercase().contains(&s)
             || req.id.to_lowercase().contains(&s);
-        if !matches { return false; }
+        if !matches {
+            return false;
+        }
     }
     true
 }

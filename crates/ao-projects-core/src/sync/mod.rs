@@ -1,5 +1,8 @@
-mod config;
-mod client;
+#![allow(dead_code)]
+#![allow(unused)]
 
-pub use config::SyncConfig;
+mod client;
+mod config;
+
 pub use client::SyncClient;
+pub use config::SyncConfig;
